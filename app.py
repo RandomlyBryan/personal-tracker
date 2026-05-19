@@ -7,8 +7,27 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
-# 1. Page Configuration (Wide mode handles screen boundaries)
+# 1. Page Configuration
 st.set_page_config(page_title="My Personal Tracker", layout="wide")
+
+# ==========================================
+# CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
+# ==========================================
+st.markdown(
+    """
+    <style>
+        /* This applies Georgia font to the main text, markdown, headers, and tabs */
+        html, body, [data-testid="stAppViewContainer"], .main, h1, h2, h3, h4, h5, h6, p, label, .stTabs button {
+            font-family: 'Georgia', serif !important;
+        }
+        /* This applies it specifically inside interactive input text fields */
+        input, textarea, select {
+            font-family: 'Georgia', serif !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # 2. Database Files Setup
 DB_FILE = "tasks_db.csv"
@@ -66,7 +85,6 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 with left_panel:
     st.header("📋 Workspace Control")
     
-    # Create interactive tabs to group features horizontally instead of vertically
     tab_alerts, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "➕ Add New", "⚙️ Manage Existing"])
     
     # --- TAB 1: URGENT ALERTS ---
@@ -144,8 +162,6 @@ with left_panel:
     # --- TAB 3: MAINTENANCE LISTS (EDIT & DELETE) ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
-        
-        # Sub-sections for managing data rows cleanly
         m_task, m_note = st.tabs(["Rotations", "Pinned Notes"])
         
         with m_task:
@@ -239,7 +255,7 @@ with right_panel:
         },
         "editable": False,
         "selectable": True,
-        "height": "auto"  # This parameter makes the calendar expand fluidly to fit your monitor sizing
+        "height": "auto"
     }
     
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
