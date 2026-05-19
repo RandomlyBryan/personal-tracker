@@ -24,6 +24,10 @@ if not os.path.exists(DB_FILE):
     starter_data = {
         "task_id": [1, 2],
         "task_name": ["Weekly Tracker Maintenance", "Monthly Budget Check-in"],
+        "task_description": [
+            "1. Check app for typos.\n2. Verify database values on GitHub.\n3. Make sure notifications work.",
+            "1. Open online banking.\n2. Export statements to spreadsheet.\n3. Categorize spending trends."
+        ],
         "frequency": ["Weekly", "Monthly"],
         "last_completed": [
             (datetime.now() - timedelta(days=8)).strftime(DATE_FORMAT), 
@@ -34,15 +38,17 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
+    # Safely ensure the new description column exists if upgrading an old file
+    if "task_description" not in df.columns:
+        df["task_description"] = "No instructions provided yet."
 
 # Helper function to save changes to our file
 def save_db(dataframe):
     dataframe.to_csv(DB_FILE, index=False)
 
 # Helper function to fire off notification emails safely
-def send_email_notification(task_name, days_overdue):
+def send_email_notification(task_name, days_overdue, description):
     try:
-        # Pull configuration keys securely from Streamlit's secrets manager
         secret_cfg = st.secrets["email"]
         
         msg = MIMEMultipart()
@@ -50,16 +56,14 @@ def send_email_notification(task_name, days_overdue):
         msg['To'] = secret_cfg["receiver_email"]
         msg['Subject'] = f"⏰ Tracker Alert: {task_name} Needs Attention!"
         
-        body = f"Hello!\n\nThis is an automated reminder that your task: '{task_name}' requires an update.\nIt was last completed {days_overdue} days ago.\n\nUpdate it here: https://share.streamlit.io/"
+        body = f"Hello!\n\nThis is an automated reminder that your task: '{task_name}' requires an update.\nIt was last completed {days_overdue} days ago.\n\n📝 Instructions / Description:\n{description}\n\nUpdate it here: https://share.streamlit.io/"
         msg.attach(MIMEText(body, 'plain'))
         
-        # Open SSL link and authenticate background email transmission
         with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
             server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
             server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
         return True
     except Exception as e:
-        # Silently log errors if secrets aren't filled out correctly yet
         return False
 
 # Application UI Header
@@ -89,10 +93,12 @@ for index, row in df.iterrows():
         col_text, col_btn = st.columns([4, 1])
         with col_text:
             st.warning(msg)
+            # Show description directly inside the warning box so you see instructions immediately
+            with st.expander("👀 View Task Instructions"):
+                st.write(row['task_description'])
             
-            # AUTOMATED TRIGGER: If overdue and not mailed yet this session, send notification
             if row['task_id'] not in st.session_state.emails_sent_today:
-                if send_email_notification(row['task_name'], days_since):
+                if send_email_notification(row['task_name'], days_since, row['task_description']):
                     st.session_state.emails_sent_today.append(row['task_id'])
                     st.info(f"📧 Notification alert dispatched to your inbox for '{row['task_name']}'!")
                     
@@ -100,7 +106,6 @@ for index, row in df.iterrows():
             if st.button("Mark Completed", key=f"remind_btn_{row['task_id']}"):
                 df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
                 save_db(df)
-                # Clear session email cache for this item upon successful check-in
                 if row['task_id'] in st.session_state.emails_sent_today:
                     st.session_state.emails_sent_today.remove(row['task_id'])
                 st.rerun()
@@ -117,7 +122,7 @@ if df.empty:
     st.info("Your schedule is currently empty. Add a task below to get started!")
 else:
     hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5 = st.columns([3, 1, 1, 1, 1])
-    hdr_col1.markdown("**Task Name**")
+    hdr_col1.markdown("**Task Details**")
     hdr_col2.markdown("**Frequency**")
     hdr_col3.markdown("**Last Completed**")
     hdr_col4.markdown("**Next Due Date**")
@@ -132,7 +137,8 @@ else:
         
         if st.session_state.editing_task_id == row['task_id']:
             with col1:
-                edit_name = st.text_input("Edit Name", value=row['task_name'], label_visibility="collapsed", key=f"edit_name_{row['task_id']}")
+                edit_name = st.text_input("Edit Name", value=row['task_name'], key=f"edit_name_{row['task_id']}")
+                edit_desc = st.text_area("Edit Instructions", value=row['task_description'], key=f"edit_desc_{row['task_id']}")
             with col2:
                 edit_freq = st.selectbox("Edit Freq", ["Weekly", "Monthly"], index=0 if row['frequency'] == "Weekly" else 1, label_visibility="collapsed", key=f"edit_freq_{row['task_id']}")
             with col3:
@@ -144,6 +150,7 @@ else:
                 with btn_save:
                     if st.button("💾", key=f"save_{row['task_id']}"):
                         df.at[index, 'task_name'] = edit_name
+                        df.at[index, 'task_description'] = edit_desc
                         df.at[index, 'frequency'] = edit_freq
                         save_db(df)
                         st.session_state.editing_task_id = None
@@ -154,7 +161,9 @@ else:
                         st.rerun()
         else:
             with col1:
-                st.write(row['task_name'])
+                st.write(f"**{row['task_name']}**")
+                with st.expander("📄 Show Instructions"):
+                    st.write(row['task_description'])
             with col2:
                 st.write(row['frequency'])
             with col3:
@@ -180,7 +189,8 @@ st.markdown("---")
 st.subheader("➕ Add Custom Recurring Task")
 
 with st.form("new_task_form", clear_on_submit=True):
-    new_name = st.text_input("Task Description")
+    new_name = st.text_input("Task Description / Title")
+    new_desc = st.text_area("Step-by-Step Instructions / Details")
     new_freq = st.selectbox("Interval Cycle", ["Weekly", "Monthly"])
     submitted = st.form_submit_button("Create Entry")
     
@@ -191,6 +201,7 @@ with st.form("new_task_form", clear_on_submit=True):
         new_row = {
             "task_id": new_id,
             "task_name": new_name,
+            "task_description": new_desc if new_desc else "No instructions provided.",
             "frequency": new_freq,
             "last_completed": default_past.strftime(DATE_FORMAT)
         }
