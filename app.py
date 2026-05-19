@@ -28,7 +28,7 @@ st.markdown(
 # 2. Database Files Setup
 DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
-EOD_FILE = "eod_temp_logs.csv"  # NEW: Secure storage file for staging daily work logs
+EOD_FILE = "eod_temp_logs.csv"
 DATE_FORMAT = "%d/%m/%Y"
 
 # Initialize temporary memory states
@@ -63,7 +63,6 @@ if not os.path.exists(NOTES_FILE):
 else:
     notes_df = pd.read_csv(NOTES_FILE)
 
-# Load/Initialize the EOD logs storage
 if not os.path.exists(EOD_FILE):
     eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
     eod_df.to_csv(EOD_FILE, index=False)
@@ -96,7 +95,6 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 with left_panel:
     st.header("📋 Workspace Control")
     
-    # NEW: Added an extra dedicated tab specifically for your EOD report log stager
     tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log Stager", "➕ Add New", "⚙️ Manage Existing"])
     
     # --- TAB 1: URGENT ALERTS ---
@@ -125,7 +123,7 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- NEW TAB 2: EOD REPORT LOG BUILDER ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Completed Work Stager")
         st.write("Type out your tasks below as you finish them. They will accumulate into a ready-to-copy report block.")
@@ -144,15 +142,27 @@ with left_panel:
 
         st.markdown("---")
 
+        # Static employee meta data profile block strings
+        emp_header = (
+            f"Employee name: Bryan Reyes\n"
+            f"Work email: work.bryanc@gmail.com\n"
+            f"Role / Position: Marketing & Reporting VA\n"
+            f"Date: {today.strftime(DATE_FORMAT)}\n"
+            f"----------------------------------------\n"
+            f"Completed Tasks & Actions Log:\n"
+        )
+
         if not eod_df.empty:
-            # Generate the raw bullet block string text template matching your company form context
-            compiled_report = "\n".join([f"• {row['bullet_text']}" for _, row in eod_df.iterrows()])
+            bullet_lines = "\n".join([f"• {row['bullet_text']}" for _, row in eod_df.iterrows()])
+            compiled_report = f"{emp_header}{bullet_lines}"
+        else:
+            compiled_report = f"{emp_header}• (No work logged yet today. Use the form above to add lines.)"
             
-            st.markdown("**Your Compiled EOD Summary Output:**")
-            # Displays the text box equipped with Streamlit's native Copy-to-Clipboard block button
-            st.code(compiled_report, language=None)
-            
-            # Maintenance and wipe action layout
+        st.markdown("**Your Compiled EOD Summary Output:**")
+        # Displays everything inside one text frame with the single click copy capability built right into the frame
+        st.code(compiled_report, language=None)
+        
+        if not eod_df.empty:
             st.markdown(" ")
             col_space, col_clear = st.columns([3, 1])
             with col_clear:
@@ -161,7 +171,6 @@ with left_panel:
                     save_db(eod_df, EOD_FILE)
                     st.rerun()
                     
-            # Allow individual bullet modification/deletion just in case of typos
             with st.expander("✏️ Modify Individual Staged Bullets"):
                 for idx, r in eod_df.iterrows():
                     b_col1, b_col2 = st.columns([5, 1])
@@ -172,8 +181,6 @@ with left_panel:
                             eod_df = eod_df[eod_df['log_id'] != r['log_id']]
                             save_db(eod_df, EOD_FILE)
                             st.rerun()
-        else:
-            st.info("No work logged yet today. Use the text line above to start staging your accomplishments!")
 
     # --- TAB 3: DATA CREATION FORMS ---
     with tab_add:
