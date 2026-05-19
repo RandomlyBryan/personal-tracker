@@ -8,19 +8,15 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="My Personal Tracker", layout="wide")
+st.set_page_config(page_title="RandomlyBryan Task Tracker", layout="wide")
 
-# ==========================================
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
-# ==========================================
 st.markdown(
     """
     <style>
-        /* This applies Georgia font to the main text, markdown, headers, and tabs */
         html, body, [data-testid="stAppViewContainer"], .main, h1, h2, h3, h4, h5, h6, p, label, .stTabs button {
             font-family: 'Georgia', serif !important;
         }
-        /* This applies it specifically inside interactive input text fields */
         input, textarea, select {
             font-family: 'Georgia', serif !important;
         }
@@ -34,8 +30,11 @@ DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 DATE_FORMAT = "%d/%m/%Y"
 
+# Initialize temporary memory states
 if "editing_task_id" not in st.session_state:
     st.session_state.editing_task_id = None
+if "editing_note_id" not in st.session_state:
+    st.session_state.editing_note_id = None
 if "emails_sent_today" not in st.session_state:
     st.session_state.emails_sent_today = []
 
@@ -71,7 +70,12 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
-st.title("🗓️ Personal Tracker Dashboard")
+# UPDATED: Added anchor alignment to center the entire header on the screen
+st.title("🗓️ Personal Tracker Dashboard", anchor=False)
+st.markdown(
+    "<h1 style='text-align: center; font-family: Georgia, serif; margin-top: -60px;'>🗓️ Personal Tracker Dashboard</h1>", 
+    unsafe_allow_html=True
+)
 st.markdown("---")
 
 today = datetime.now().date()
@@ -83,7 +87,7 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 # LEFT PANEL: COMPACT TABBED WORKSPACE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Workspace Control")
+    st.header("📋 Command Center")
     
     tab_alerts, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "➕ Add New", "⚙️ Manage Existing"])
     
@@ -200,15 +204,43 @@ with left_panel:
                 st.info("No temporary calendar notes pinned.")
             else:
                 for index, row in notes_df.iterrows():
-                    nc1, nc2 = st.columns([4, 1])
-                    with nc1:
-                        f_date = datetime.strptime(row['event_date'], "%Y-%m-%d").strftime(DATE_FORMAT)
-                        st.write(f"📌 **{f_date}** — {row['title']}")
-                    with nc2:
-                        if st.button("🗑️", key=f"del_note_{row['note_id']}"):
-                            notes_df = notes_df[notes_df['note_id'] != row['note_id']]
-                            save_db(notes_df, NOTES_FILE)
-                            st.rerun()
+                    nc1, nc2, nc3 = st.columns([3, 1, 1])
+                    
+                    if st.session_state.editing_note_id == row['note_id']:
+                        current_note_date = datetime.strptime(row['event_date'], "%Y-%m-%d").date()
+                        with nc1:
+                            edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
+                            edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
+                        with nc2:
+                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date, key=f"endate_{row['note_id']}", label_visibility="collapsed")
+                        with nc3:
+                            if st.button("💾", key=f"s_note_{row['note_id']}"):
+                                notes_df.at[index, 'title'] = edit_note_title
+                                notes_df.at[index, 'details'] = edit_note_details
+                                notes_df.at[index, 'event_date'] = edit_note_date.strftime("%Y-%m-%d")
+                                save_db(notes_df, NOTES_FILE)
+                                st.session_state.editing_note_id = None
+                                st.rerun()
+                            if st.button("❌", key=f"c_note_{row['note_id']}"):
+                                st.session_state.editing_note_id = None
+                                st.rerun()
+                    else:
+                        with nc1:
+                            f_date = datetime.strptime(row['event_date'], "%Y-%m-%d").strftime(DATE_FORMAT)
+                            st.write(f"📌 **{f_date}** — {row['title']}")
+                            if row['details']:
+                                with st.expander("📄 View Agenda Notes"):
+                                    st.write(row['details'])
+                        with nc2:
+                            if st.button("✏️", key=f"em_note_{row['note_id']}"):
+                                st.session_state.editing_note_id = row['note_id']
+                                st.rerun()
+                        with nc3:
+                            if st.button("🗑️", key=f"del_note_{row['note_id']}"):
+                                notes_df = notes_df[notes_df['note_id'] != row['note_id']]
+                                save_db(notes_df, NOTES_FILE)
+                                st.rerun()
+                    st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
 # ------------------------------------------
 # RIGHT PANEL: FLUID VISUAL CALENDAR
