@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="RandomlyBryan", layout="wide")
+st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -28,6 +28,7 @@ st.markdown(
 # 2. Database Files Setup
 DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
+EOD_FILE = "eod_temp_logs.csv"  # NEW: Secure storage file for staging daily work logs
 DATE_FORMAT = "%d/%m/%Y"
 
 # Initialize temporary memory states
@@ -62,6 +63,13 @@ if not os.path.exists(NOTES_FILE):
 else:
     notes_df = pd.read_csv(NOTES_FILE)
 
+# Load/Initialize the EOD logs storage
+if not os.path.exists(EOD_FILE):
+    eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
+    eod_df.to_csv(EOD_FILE, index=False)
+else:
+    eod_df = pd.read_csv(EOD_FILE)
+
 def save_db(dataframe, filename):
     dataframe.to_csv(filename, index=False)
 
@@ -70,7 +78,7 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
-# Clean and perfectly centered main screen title
+# Perfectly centered main screen title
 st.markdown(
     "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
@@ -83,12 +91,13 @@ today = datetime.now().date()
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
-# LEFT PANEL: COMPACT TABBED WORKSPACE
+# LEFT PANEL: COMPACT TABBED WORKSPACE WITH EOD ENGINE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Command Center")
+    st.header("📋 Workspace Control")
     
-    tab_alerts, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "➕ Add New", "⚙️ Manage Existing"])
+    # NEW: Added an extra dedicated tab specifically for your EOD report log stager
+    tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log Stager", "➕ Add New", "⚙️ Manage Existing"])
     
     # --- TAB 1: URGENT ALERTS ---
     with tab_alerts:
@@ -116,7 +125,57 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: DATA CREATION FORMS ---
+    # --- NEW TAB 2: EOD REPORT LOG BUILDER ---
+    with tab_eod:
+        st.subheader("Daily Completed Work Stager")
+        st.write("Type out your tasks below as you finish them. They will accumulate into a ready-to-copy report block.")
+
+        # Single bullet entry form
+        with st.form("eod_add_form", clear_on_submit=True):
+            log_input = st.text_input("Enter completed action item / accomplishment:")
+            add_bullet = st.form_submit_button("Stage Accomplishment")
+            
+            if add_bullet and log_input:
+                new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
+                eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                save_db(eod_df, EOD_FILE)
+                st.rerun()
+
+        st.markdown("---")
+
+        if not eod_df.empty:
+            # Generate the raw bullet block string text template matching your company form context
+            compiled_report = "\n".join([f"• {row['bullet_text']}" for _, row in eod_df.iterrows()])
+            
+            st.markdown("**Your Compiled EOD Summary Output:**")
+            # Displays the text box equipped with Streamlit's native Copy-to-Clipboard block button
+            st.code(compiled_report, language=None)
+            
+            # Maintenance and wipe action layout
+            st.markdown(" ")
+            col_space, col_clear = st.columns([3, 1])
+            with col_clear:
+                if st.button("🗑️ Clear Staged Data", help="Wipe out current logs to reset for a new work day"):
+                    eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
+                    save_db(eod_df, EOD_FILE)
+                    st.rerun()
+                    
+            # Allow individual bullet modification/deletion just in case of typos
+            with st.expander("✏️ Modify Individual Staged Bullets"):
+                for idx, r in eod_df.iterrows():
+                    b_col1, b_col2 = st.columns([5, 1])
+                    with b_col1:
+                        st.write(f"- {r['bullet_text']}")
+                    with b_col2:
+                        if st.button("❌", key=f"del_b_{r['log_id']}", help="Remove this single bullet"):
+                            eod_df = eod_df[eod_df['log_id'] != r['log_id']]
+                            save_db(eod_df, EOD_FILE)
+                            st.rerun()
+        else:
+            st.info("No work logged yet today. Use the text line above to start staging your accomplishments!")
+
+    # --- TAB 3: DATA CREATION FORMS ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         
@@ -162,7 +221,7 @@ with left_panel:
                     save_db(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 3: MAINTENANCE LISTS (EDIT & DELETE) ---
+    # --- TAB 4: MAINTENANCE LISTS (EDIT & DELETE) ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
         m_task, m_note = st.tabs(["Rotations", "Pinned Notes"])
@@ -233,7 +292,6 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                # FIXED LINE BELOW: Fixed broken return syntax wrapper glitch
                                 st.rerun()
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
