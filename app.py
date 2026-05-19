@@ -12,7 +12,7 @@ st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # 2. Database Files Setup
 DB_FILE = "tasks_db.csv"
-NOTES_FILE = "calendar_notes.csv"  # New database file for one-time notes/meetings
+NOTES_FILE = "calendar_notes.csv"
 DATE_FORMAT = "%d/%m/%Y"
 
 if "editing_task_id" not in st.session_state:
@@ -132,7 +132,7 @@ with left_panel:
                 "note_id": new_note_id,
                 "title": note_title,
                 "details": note_details if note_details else "",
-                "event_date": note_date.strftime("%Y-%m-%d") # Store as ISO string for calendar matching
+                "event_date": note_date.strftime("%Y-%m-%d")
             }
             notes_df = pd.concat([notes_df, pd.DataFrame([new_note_row])], ignore_index=True)
             save_db(notes_df, NOTES_FILE)
@@ -167,7 +167,6 @@ with right_panel:
         
     # 2. Process and load the One-Time Notes / Meetings
     for index, row in notes_df.iterrows():
-        # Purple color theme to visually distinguish meetings/notes from tasks
         note_color = "#7A41F3" 
         
         calendar_events.append({
@@ -190,15 +189,15 @@ with right_panel:
         "selectable": True
     }
     
-    # Display the calendar with both datasets merged
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
     
-    # --- Quick list layout to see text details of pinned notes below calendar ---
+    # --- Pinned Notes List View ---
     if not notes_df.empty:
         st.subheader("📝 Quick Look: Upcoming Pinned Notes")
         for index, row in notes_df.iterrows():
             formatted_note_date = datetime.strptime(row['event_date'], "%Y-%m-%d").strftime(DATE_FORMAT)
-            with st.expander(f"📌 {formatted_note_date} — {row['title'] Bill}"):
+            # FIXED LINE BELOW: Removed the trailing text typo outside of the string quotes
+            with st.expander(f"📌 {formatted_note_date} — {row['title']}"):
                 st.write(row['details'])
                 if st.button("Delete Note", key=f"del_note_{row['note_id']}"):
                     notes_df = notes_df[notes_df['note_id'] != row['note_id']]
