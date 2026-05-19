@@ -6,7 +6,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-# 1. Page Configuration
+# 1. Page Configuration (Wide mode is essential for side-by-side)
 st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # 2. Database File Setup
@@ -22,14 +22,16 @@ if "emails_sent_today" not in st.session_state:
 # Load existing tasks or initialize defaults
 if not os.path.exists(DB_FILE):
     starter_data = {
-        "task_id": [1, 2],
-        "task_name": ["Weekly Tracker Maintenance", "Monthly Budget Check-in"],
+        "task_id": [1, 2, 3],
+        "task_name": ["Daily Standup & Coding Check-in", "Weekly Tracker Maintenance", "Monthly Budget Check-in"],
         "task_description": [
-            "1. Check app for typos.\n2. Verify database values on GitHub.\n3. Make sure notifications work.",
-            "1. Open online banking.\n2. Export statements to spreadsheet.\n3. Categorize spending trends."
+            "Review yesterdays work and map out what to code next.",
+            "1. Check app for typos.\n2. Verify database values on GitHub.",
+            "1. Open online banking.\n2. Export statements to spreadsheet."
         ],
-        "frequency": ["Weekly", "Monthly"],
+        "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
+            (datetime.now() - timedelta(days=2)).strftime(DATE_FORMAT), 
             (datetime.now() - timedelta(days=8)).strftime(DATE_FORMAT), 
             (datetime.now() - timedelta(days=32)).strftime(DATE_FORMAT)
         ]
@@ -38,7 +40,6 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    # Safely ensure the new description column exists if upgrading an old file
     if "task_description" not in df.columns:
         df["task_description"] = "No instructions provided yet."
 
@@ -50,163 +51,178 @@ def save_db(dataframe):
 def send_email_notification(task_name, days_overdue, description):
     try:
         secret_cfg = st.secrets["email"]
-        
         msg = MIMEMultipart()
         msg['From'] = secret_cfg["sender_email"]
         msg['To'] = secret_cfg["receiver_email"]
         msg['Subject'] = f"⏰ Tracker Alert: {task_name} Needs Attention!"
         
-        body = f"Hello!\n\nThis is an automated reminder that your task: '{task_name}' requires an update.\nIt was last completed {days_overdue} days ago.\n\n📝 Instructions / Description:\n{description}\n\nUpdate it here: https://share.streamlit.io/"
+        body = f"Hello!\n\nThis is an automated reminder that your task: '{task_name}' requires an update.\nIt was last completed {days_overdue} days ago.\n\n📝 Instructions:\n{description}\n\nUpdate it here: https://share.streamlit.io/"
         msg.attach(MIMEText(body, 'plain'))
         
         with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
             server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
             server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
         return True
-    except Exception as e:
+    except:
         return False
 
 # Application UI Header
-st.title("🗓️ My Personal Tracker & Scheduler")
+st.title("🗓️ Personal Tracker Dashboard")
 st.markdown("---")
 
-# --- PART 2: REMINDERS & ALERTS ---
-st.subheader("🔔 Action Required")
+# Helper to map frequencies to numeric intervals
+def get_days_interval(freq_string):
+    if freq_string == "Daily":
+        return 1
+    elif freq_string == "Weekly":
+        return 7
+    else:
+        return 30
 
 today = datetime.now().date()
-reminders_found = False
 
-for index, row in df.iterrows():
-    last_comp_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
-    days_since = (today - last_comp_date).days
+# ==========================================
+# SPLIT INTERFACE INTO TWO SIDE-BY-SIDE PANELS
+# ==========================================
+left_panel, right_panel = st.columns([1, 1], gap="large")
+
+# ------------------------------------------
+# LEFT PANEL: ACTIVE TASKS, REMINDERS & BUILDER
+# ------------------------------------------
+with left_panel:
+    st.header("📋 Task & Routine Manager")
     
-    is_overdue = False
-    if row['frequency'] == "Weekly" and days_since >= 7:
-        is_overdue = True
-        msg = f"**{row['task_name']}** needs an update! (Last updated {days_since} days ago)"
-    elif row['frequency'] == "Monthly" and days_since >= 30:
-        is_overdue = True
-        msg = f"**{row['task_name']}** requires its monthly check-in! (Last updated {days_since} days ago)"
-        
-    if is_overdue:
-        reminders_found = True
-        col_text, col_btn = st.columns([4, 1])
-        with col_text:
-            st.warning(msg)
-            # Show description directly inside the warning box so you see instructions immediately
-            with st.expander("👀 View Task Instructions"):
-                st.write(row['task_description'])
-            
-            if row['task_id'] not in st.session_state.emails_sent_today:
-                if send_email_notification(row['task_name'], days_since, row['task_description']):
-                    st.session_state.emails_sent_today.append(row['task_id'])
-                    st.info(f"📧 Notification alert dispatched to your inbox for '{row['task_name']}'!")
-                    
-        with col_btn:
-            if st.button("Mark Completed", key=f"remind_btn_{row['task_id']}"):
-                df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
-                save_db(df)
-                if row['task_id'] in st.session_state.emails_sent_today:
-                    st.session_state.emails_sent_today.remove(row['task_id'])
-                st.rerun()
-
-if not reminders_found:
-    st.success("All clear! Your recurring tasks are up to date.")
-
-st.markdown("---")
-
-# --- PART 3: MASTER SCHEDULE INTERFACE (WITH EDIT/DELETE) ---
-st.subheader("📋 Master Schedule Overview")
-
-if df.empty:
-    st.info("Your schedule is currently empty. Add a task below to get started!")
-else:
-    hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5 = st.columns([3, 1, 1, 1, 1])
-    hdr_col1.markdown("**Task Details**")
-    hdr_col2.markdown("**Frequency**")
-    hdr_col3.markdown("**Last Completed**")
-    hdr_col4.markdown("**Next Due Date**")
-    hdr_col5.markdown("**Actions**")
-    st.markdown("---")
-
+    # --- Reminders Sub-section ---
+    st.subheader("🔔 Urgent Updates")
+    reminders_found = False
+    
     for index, row in df.iterrows():
-        base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
-        next_due = base_date + timedelta(days=7) if row['frequency'] == "Weekly" else base_date + timedelta(days=30)
+        last_comp_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+        days_since = (today - last_comp_date).days
+        needed_days = get_days_interval(row['frequency'])
         
-        col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+        if days_since >= needed_days:
+            reminders_found = True
+            col_text, col_btn = st.columns([3, 1])
+            with col_text:
+                st.warning(f"**{row['task_name']}** due! ({days_since} days since update)")
+                with st.expander("📄 Instructions"):
+                    st.write(row['task_description'])
+                
+                # Background email trigger
+                if row['task_id'] not in st.session_state.emails_sent_today:
+                    if send_email_notification(row['task_name'], days_since, row['task_description']):
+                        st.session_state.emails_sent_today.append(row['task_id'])
+                        st.info("📧 Alert email dispatched.")
+            with col_btn:
+                if st.button("Complete", key=f"remind_btn_{row['task_id']}"):
+                    df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
+                    save_db(df)
+                    if row['task_id'] in st.session_state.emails_sent_today:
+                        st.session_state.emails_sent_today.remove(row['task_id'])
+                    st.rerun()
+                    
+    if not reminders_found:
+        st.success("🎉 All routines are current and up to date!")
+        
+    st.markdown("---")
+    
+    # --- Edit / Delete Schedule list ---
+    st.subheader("⚙️ Edit Schedule Items")
+    
+    for index, row in df.iterrows():
+        # Layout individual edit records
+        ec1, ec2, ec3 = st.columns([3, 1, 1])
         
         if st.session_state.editing_task_id == row['task_id']:
-            with col1:
-                edit_name = st.text_input("Edit Name", value=row['task_name'], key=f"edit_name_{row['task_id']}")
-                edit_desc = st.text_area("Edit Instructions", value=row['task_description'], key=f"edit_desc_{row['task_id']}")
-            with col2:
-                edit_freq = st.selectbox("Edit Freq", ["Weekly", "Monthly"], index=0 if row['frequency'] == "Weekly" else 1, label_visibility="collapsed", key=f"edit_freq_{row['task_id']}")
-            with col3:
-                st.write(row['last_completed'])
-            with col4:
-                st.write(next_due.strftime(DATE_FORMAT))
-            with col5:
-                btn_save, btn_cancel = st.columns(2)
-                with btn_save:
-                    if st.button("💾", key=f"save_{row['task_id']}"):
-                        df.at[index, 'task_name'] = edit_name
-                        df.at[index, 'task_description'] = edit_desc
-                        df.at[index, 'frequency'] = edit_freq
-                        save_db(df)
-                        st.session_state.editing_task_id = None
-                        st.rerun()
-                with btn_cancel:
-                    if st.button("❌", key=f"cancel_{row['task_id']}"):
-                        st.session_state.editing_task_id = None
-                        st.rerun()
+            with ec1:
+                edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}")
+                edit_desc = st.text_area("Instructions", value=row['task_description'], key=f"ed_{row['task_id']}")
+            with ec2:
+                edit_freq = st.selectbox("Cycle", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}")
+            with ec3:
+                if st.button("💾", key=f"s_{row['task_id']}"):
+                    df.at[index, 'task_name'] = edit_name
+                    df.at[index, 'task_description'] = edit_desc
+                    df.at[index, 'frequency'] = edit_freq
+                    save_db(df)
+                    st.session_state.editing_task_id = None
+                    st.rerun()
+                if st.button("❌", key=f"c_{row['task_id']}"):
+                    st.session_state.editing_task_id = None
+                    st.rerun()
         else:
-            with col1:
-                st.write(f"**{row['task_name']}**")
-                with st.expander("📄 Show Instructions"):
-                    st.write(row['task_description'])
-            with col2:
-                st.write(row['frequency'])
-            with col3:
-                st.write(row['last_completed'])
-            with col4:
-                st.write(next_due.strftime(DATE_FORMAT))
-            with col5:
-                btn_edit, btn_delete = st.columns(2)
-                with btn_edit:
-                    if st.button("✏️", key=f"edit_mode_{row['task_id']}"):
-                        st.session_state.editing_task_id = row['task_id']
-                        st.rerun()
-                with btn_delete:
-                    if st.button("🗑️", key=f"delete_{row['task_id']}"):
-                        df = df[df['task_id'] != row['task_id']]
-                        save_db(df)
-                        st.rerun()
-        
-        st.markdown("<hr style='margin:0.2em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+            with ec1:
+                st.write(f"**{row['task_name']}** ({row['frequency']})")
+            with ec2:
+                if st.button("✏️", key=f"em_{row['task_id']}"):
+                    st.session_state.editing_task_id = row['task_id']
+                    st.rerun()
+            with ec3:
+                if st.button("🗑️", key=f"d_{row['task_id']}"):
+                    df = df[df['task_id'] != row['task_id']]
+                    save_db(df)
+                    st.rerun()
+        st.markdown("<hr style='margin:0.1em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
-# --- PART 4: CREATE NEW ITEMS ---
-st.markdown("---")
-st.subheader("➕ Add Custom Recurring Task")
-
-with st.form("new_task_form", clear_on_submit=True):
-    new_name = st.text_input("Task Description / Title")
-    new_desc = st.text_area("Step-by-Step Instructions / Details")
-    new_freq = st.selectbox("Interval Cycle", ["Weekly", "Monthly"])
-    submitted = st.form_submit_button("Create Entry")
+    st.markdown("---")
     
-    if submitted and new_name:
-        new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-        default_past = today - timedelta(days=8 if new_freq == "Weekly" else 32)
+    # --- Creation Engine ---
+    st.subheader("➕ Create Custom Item")
+    with st.form("new_task_form", clear_on_submit=True):
+        new_name = st.text_input("Task Name / Title")
+        new_desc = st.text_area("Task Instructions")
+        new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
+        submitted = st.form_submit_button("Add to Rotation")
         
-        new_row = {
-            "task_id": new_id,
-            "task_name": new_name,
-            "task_description": new_desc if new_desc else "No instructions provided.",
-            "frequency": new_freq,
-            "last_completed": default_past.strftime(DATE_FORMAT)
-        }
+        if submitted and new_name:
+            new_id = int(df['task_id'].max() + 1) if not df.empty else 1
+            days_back = get_days_interval(new_freq) + 1
+            default_past = today - timedelta(days=days_back)
+            
+            new_row = {
+                "task_id": new_id,
+                "task_name": new_name,
+                "task_description": new_desc if new_desc else "No instructions provided.",
+                "frequency": new_freq,
+                "last_completed": default_past.strftime(DATE_FORMAT)
+            }
+            df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            save_db(df)
+            st.rerun()
+
+# ------------------------------------------
+# RIGHT PANEL: VISUAL SCHEDULE CALENDAR GRID
+# ------------------------------------------
+with right_panel:
+    st.header("📅 Visual Schedule & Agenda")
+    
+    # Format and process calendar calculations map
+    cal_events = []
+    for index, row in df.iterrows():
+        base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+        target_span = get_days_interval(row['frequency'])
+        next_due = base_date + timedelta(days=target_span)
         
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        save_db(df)
-        st.success(f"Successfully added: {new_name}")
-        st.rerun()
+        cal_events.append({
+            "Task": row['task_name'],
+            "Frequency": row['frequency'],
+            "Last Updated": base_date.strftime(DATE_FORMAT),
+            "Next Due Date": next_due.strftime(DATE_FORMAT),
+            "Status": "⚠️ Overdue" if today >= next_due else "✅ OK"
+        })
+        
+    cal_df = pd.DataFrame(cal_events)
+    
+    if not cal_df.empty:
+        # Render high-visibility metrics for dates
+        st.subheader("Next Upcoming Targets")
+        st.dataframe(cal_df, use_container_width=True, hide_index=True)
+        
+        # Display simple agenda breakdown timeline
+        st.subheader("Timeline Agenda Tracker")
+        for event in cal_events:
+            status_color = "🔴" if event["Status"] == "⚠️ Overdue" else "🟢"
+            st.info(f"{status_color} **{event['Next Due Date']}** — {event['Task']} ({event['Frequency']})")
+    else:
+        st.info("No items scheduled to build out calendar dates.")
