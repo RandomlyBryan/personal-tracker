@@ -75,67 +75,73 @@ st.markdown("---")
 # --- PART 3: MASTER SCHEDULE INTERFACE (WITH EDIT/DELETE) ---
 st.subheader("📋 Master Schedule Overview")
 
-# Table Headers
-hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5 = st.columns([3, 1, 1, 1, 1])
-hdr_col1.markdown("**Task Name**")
-hdr_col2.markdown("**Frequency**")
-hdr_col3.markdown("**Last Completed**")
-hdr_col4.markdown("**Next Due Date**")
-hdr_col5.markdown("**Actions**")
+if df.empty:
+    st.info("Your schedule is currently empty. Add a task below to get started!")
+else:
+    # Table Headers
+    hdr_col1, hdr_col2, hdr_col3, hdr_col4, hdr_col5 = st.columns([3, 1, 1, 1, 1])
+    hdr_col1.markdown("**Task Name**")
+    hdr_col2.markdown("**Frequency**")
+    hdr_col3.markdown("**Last Completed**")
+    hdr_col4.markdown("**Next Due Date**")
+    hdr_col5.markdown("**Actions**")
+    st.markdown("---")
 
-# Loop through and build custom rows with action buttons
-for index, row in df.iterrows():
-    base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
-    next_due = base_date + timedelta(days=7) if row['frequency'] == "Weekly" else base_date + timedelta(days=30)
-    
-    col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
-    
-    # CHECK: Is this specific row currently being edited?
-    if st.session_state.editing_task_id == row['task_id']:
-        with col1:
-            edit_name = st.text_input("Edit Name", value=row['task_name'], label_visibility="collapsed", key=f"edit_name_{row['task_id']}")
-        with col2:
-            edit_freq = st.selectbox("Edit Freq", ["Weekly", "Monthly"], index=0 if row['frequency'] == "Weekly" else 1, label_visibility="collapsed", key=f"edit_freq_{row['task_id']}")
-        with col3:
-            st.write(row['last_completed'])
-        with col4:
-            st.write(next_due.strftime(DATE_FORMAT))
-        with col5:
-            btn_save, btn_cancel = st.columns(2)
-            with btn_save:
-                if st.button("💾", key=f"save_{row['task_id']}", help="Save changes"):
-                    df.at[index, 'task_name'] = edit_name
-                    df.at[index, 'frequency'] = edit_freq
-                    save_db(df)
-                    st.session_state.editing_task_id = None
-                    st.rerun()
-            with btn_cancel:
-                if st.button("❌", key=f"cancel_{row['task_id']}", help="Cancel editing"):
-                    st.session_state.editing_task_id = None
-                    st.rerun()
-    else:
-        # Standard View Mode
-        with col1:
-            st.write(row['task_name'])
-        with col2:
-            st.write(row['frequency'])
-        with col3:
-            st.write(row['last_completed'])
-        with col4:
-            st.write(next_due.strftime(DATE_FORMAT))
-        with col5:
-            btn_edit, btn_delete = st.columns(2)
-            with btn_edit:
-                if st.button("✏️", key=f"edit_mode_{row['task_id']}", help="Edit task properties"):
-                    st.session_state.editing_task_id = row['task_id']
-                    st.rerun()
-            with btn_delete:
-                if st.button("🗑️", key=f"delete_{row['task_id']}", help="Delete task permanently"):
-                    # Remove the row where the task matches, save the spreadsheet, and refresh
-                    df = df[df['task_id'] != row['task_id']]
-                    save_db(df)
-                    st.rerun()
-    st.markdown("<hr style='margin:0.2em 0px; border-color:#f0f2f6;'>", unsafe_allowed_html=True)
+    # Loop through and build custom rows with action buttons
+    for index, row in df.iterrows():
+        base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+        next_due = base_date + timedelta(days=7) if row['frequency'] == "Weekly" else base_date + timedelta(days=30)
+        
+        col1, col2, col3, col4, col5 = st.columns([3, 1, 1, 1, 1])
+        
+        # CHECK: Is this specific row currently being edited?
+        if st.session_state.editing_task_id == row['task_id']:
+            with col1:
+                edit_name = st.text_input("Edit Name", value=row['task_name'], label_visibility="collapsed", key=f"edit_name_{row['task_id']}")
+            with col2:
+                edit_freq = st.selectbox("Edit Freq", ["Weekly", "Monthly"], index=0 if row['frequency'] == "Weekly" else 1, label_visibility="collapsed", key=f"edit_freq_{row['task_id']}")
+            with col3:
+                st.write(row['last_completed'])
+            with col4:
+                st.write(next_due.strftime(DATE_FORMAT))
+            with col5:
+                btn_save, btn_cancel = st.columns(2)
+                with btn_save:
+                    if st.button("💾", key=f"save_{row['task_id']}", help="Save changes"):
+                        df.at[index, 'task_name'] = edit_name
+                        df.at[index, 'frequency'] = edit_freq
+                        save_db(df)
+                        st.session_state.editing_task_id = None
+                        st.rerun()
+                with btn_cancel:
+                    if st.button("❌", key=f"cancel_{row['task_id']}", help="Cancel editing"):
+                        st.session_state.editing_task_id = None
+                        st.rerun()
+        else:
+            # Standard View Mode
+            with col1:
+                st.write(row['task_name'])
+            with col2:
+                st.write(row['frequency'])
+            with col3:
+                st.write(row['last_completed'])
+            with col4:
+                st.write(next_due.strftime(DATE_FORMAT))
+            with col5:
+                btn_edit, btn_delete = st.columns(2)
+                with btn_edit:
+                    if st.button("✏️", key=f"edit_mode_{row['task_id']}", help="Edit task properties"):
+                        st.session_state.editing_task_id = row['task_id']
+                        st.rerun()
+                with btn_delete:
+                    if st.button("🗑️", key=f"delete_{row['task_id']}", help="Delete task permanently"):
+                        # Filter out the task, save it, and reload smoothly
+                        df = df[df['task_id'] != row['task_id']]
+                        save_db(df)
+                        st.rerun()
+        
+        # FIXED LINE BELOW: Changed unsafe_allowed_html to unsafe_allow_html
+        st.markdown("<hr style='margin:0.2em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
 # --- PART 4: CREATE NEW ITEMS ---
 st.markdown("---")
