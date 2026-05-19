@@ -5,13 +5,14 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from streamlit_calendar import calendar  # Imports the visual calendar component
+from streamlit_calendar import calendar
 
 # 1. Page Configuration
 st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
-# 2. Database File Setup
+# 2. Database Files Setup
 DB_FILE = "tasks_db.csv"
+NOTES_FILE = "calendar_notes.csv"  # New database file for one-time notes/meetings
 DATE_FORMAT = "%d/%m/%Y"
 
 if "editing_task_id" not in st.session_state:
@@ -19,16 +20,12 @@ if "editing_task_id" not in st.session_state:
 if "emails_sent_today" not in st.session_state:
     st.session_state.emails_sent_today = []
 
-# Load existing tasks or initialize defaults
+# Load/Initialize Recurring Tasks Database
 if not os.path.exists(DB_FILE):
     starter_data = {
         "task_id": [1, 2, 3],
         "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
-        "task_description": [
-            "Review code checklist.",
-            "Verify remote logs and verify files.",
-            "Export statement values to master table."
-        ],
+        "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
         "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
             (datetime.now() - timedelta(days=2)).strftime(DATE_FORMAT), 
@@ -41,8 +38,15 @@ if not os.path.exists(DB_FILE):
 else:
     df = pd.read_csv(DB_FILE)
 
-def save_db(dataframe):
-    dataframe.to_csv(DB_FILE, index=False)
+# Load/Initialize One-Time Calendar Notes Database
+if not os.path.exists(NOTES_FILE):
+    notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
+    notes_df.to_csv(NOTES_FILE, index=False)
+else:
+    notes_df = pd.read_csv(NOTES_FILE)
+
+def save_db(dataframe, filename):
+    dataframe.to_csv(filename, index=False)
 
 def get_days_interval(freq_string):
     if freq_string == "Daily": return 1
@@ -54,11 +58,11 @@ st.markdown("---")
 
 today = datetime.now().date()
 
-# Create side-by-side split screen panels
+# Side-by-side split layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
-# LEFT PANEL: ACTIONABLE TRACKER INTERFACE
+# LEFT PANEL: MANAGER & FORMS
 # ------------------------------------------
 with left_panel:
     st.header("📋 Task & Routine Manager")
@@ -77,12 +81,10 @@ with left_panel:
             col_text, col_btn = st.columns([3, 1])
             with col_text:
                 st.warning(f"**{row['task_name']}** due! ({days_since} days since update)")
-                with st.expander("📄 Instructions"):
-                    st.write(row['task_description'])
             with col_btn:
                 if st.button("Complete", key=f"remind_btn_{row['task_id']}"):
                     df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
-                    save_db(df)
+                    save_db(df, DB_FILE)
                     st.rerun()
                     
     if not reminders_found:
@@ -90,42 +92,8 @@ with left_panel:
         
     st.markdown("---")
     
-    # --- Quick Edit Layout ---
-    st.subheader("⚙️ Edit Schedule Items")
-    for index, row in df.iterrows():
-        ec1, ec2, ec3 = st.columns([3, 1, 1])
-        if st.session_state.editing_task_id == row['task_id']:
-            with ec1:
-                edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}")
-                edit_desc = st.text_area("Instructions", value=row['task_description'], key=f"ed_{row['task_id']}")
-            with ec2:
-                edit_freq = st.selectbox("Cycle", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}")
-            with ec3:
-                if st.button("💾", key=f"s_{row['task_id']}"):
-                    df.at[index, 'task_name'] = edit_name
-                    df.at[index, 'task_description'] = edit_desc
-                    df.at[index, 'frequency'] = edit_freq
-                    save_db(df)
-                    st.session_state.editing_task_id = None
-                    st.rerun()
-        else:
-            with ec1:
-                st.write(f"**{row['task_name']}** ({row['frequency']})")
-            with ec2:
-                if st.button("✏️", key=f"em_{row['task_id']}"):
-                    st.session_state.editing_task_id = row['task_id']
-                    st.rerun()
-            with ec3:
-                if st.button("🗑️", key=f"d_{row['task_id']}"):
-                    df = df[df['task_id'] != row['task_id']]
-                    save_db(df)
-                    st.rerun()
-        st.markdown("<hr style='margin:0.1em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
-
-    st.markdown("---")
-    
-    # --- Task Creation Engine ---
-    st.subheader("➕ Create Custom Item")
+    # --- Form 1: Add Recurring Task ---
+    st.subheader("➕ Add Custom Recurring Task")
     with st.form("new_task_form", clear_on_submit=True):
         new_name = st.text_input("Task Name / Title")
         new_desc = st.text_area("Task Instructions")
@@ -145,29 +113,51 @@ with left_panel:
                 "last_completed": default_past.strftime(DATE_FORMAT)
             }
             df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-            save_db(df)
+            save_db(df, DB_FILE)
+            st.rerun()
+
+    st.markdown("---")
+
+    # --- Form 2: Add One-Time Calendar Note / Meeting ---
+    st.subheader("📌 Add Calendar Note / Meeting Schedule")
+    with st.form("new_note_form", clear_on_submit=True):
+        note_title = st.text_input("Event / Meeting Title (e.g., Sync with Team)")
+        note_details = st.text_area("Notes / Agenda Details")
+        note_date = st.date_input("Event Date", value=today)
+        submitted_note = st.form_submit_button("Pin to Calendar")
+        
+        if submitted_note and note_title:
+            new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
+            new_note_row = {
+                "note_id": new_note_id,
+                "title": note_title,
+                "details": note_details if note_details else "",
+                "event_date": note_date.strftime("%Y-%m-%d") # Store as ISO string for calendar matching
+            }
+            notes_df = pd.concat([notes_df, pd.DataFrame([new_note_row])], ignore_index=True)
+            save_db(notes_df, NOTES_FILE)
+            st.success(f"Pinned event: {note_title}")
             st.rerun()
 
 # ------------------------------------------
-# RIGHT PANEL: FULL MONTH INTERACTIVE CALENDAR GRID
+# RIGHT PANEL: VISUAL MONTHLY CALENDAR GRID
 # ------------------------------------------
 with right_panel:
     st.header("📅 Visual Monthly Calendar")
     
     calendar_events = []
     
+    # 1. Process and load the Recurring Tasks
     for index, row in df.iterrows():
         base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
         target_span = get_days_interval(row['frequency'])
         next_due = base_date + timedelta(days=target_span)
         
-        # Color code events: Red if overdue, Blue if safe
         is_overdue = today >= next_due
         event_color = "#FF4B4B" if is_overdue else "#1C83E1"
         
-        # Format events into the exact calendar schema template
         calendar_events.append({
-            "title": f"⚠️ {row['task_name']}" if is_overdue else row['task_name'],
+            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"🔄 {row['task_name']}",
             "start": next_due.strftime("%Y-%m-%d"),
             "end": next_due.strftime("%Y-%m-%d"),
             "backgroundColor": event_color,
@@ -175,7 +165,20 @@ with right_panel:
             "allDay": True
         })
         
-    # Calendar UI Configurations Options
+    # 2. Process and load the One-Time Notes / Meetings
+    for index, row in notes_df.iterrows():
+        # Purple color theme to visually distinguish meetings/notes from tasks
+        note_color = "#7A41F3" 
+        
+        calendar_events.append({
+            "title": f"📌 {row['title']}",
+            "start": str(row['event_date']),
+            "end": str(row['event_date']),
+            "backgroundColor": note_color,
+            "borderColor": note_color,
+            "allDay": True
+        })
+        
     calendar_options = {
         "initialView": "dayGridMonth",
         "headerToolbar": {
@@ -187,5 +190,17 @@ with right_panel:
         "selectable": True
     }
     
-    # Render the physical monthly calendar widget
+    # Display the calendar with both datasets merged
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
+    
+    # --- Quick list layout to see text details of pinned notes below calendar ---
+    if not notes_df.empty:
+        st.subheader("📝 Quick Look: Upcoming Pinned Notes")
+        for index, row in notes_df.iterrows():
+            formatted_note_date = datetime.strptime(row['event_date'], "%Y-%m-%d").strftime(DATE_FORMAT)
+            with st.expander(f"📌 {formatted_note_date} — {row['title'] Bill}"):
+                st.write(row['details'])
+                if st.button("Delete Note", key=f"del_note_{row['note_id']}"):
+                    notes_df = notes_df[notes_df['note_id'] != row['note_id']]
+                    save_db(notes_df, NOTES_FILE)
+                    st.rerun()
