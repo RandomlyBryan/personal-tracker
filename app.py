@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="RandomlyBryan", layout="wide")
+st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -70,7 +70,7 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
-# FIXED: Removed the dual st.title declaration to fix the overlap text glitch
+# Clean and perfectly centered main screen title
 st.markdown(
     "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
@@ -233,7 +233,8 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                .rerun()
+                                # FIXED LINE BELOW: Fixed broken return syntax wrapper glitch
+                                st.rerun()
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
