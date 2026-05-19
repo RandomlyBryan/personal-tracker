@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="RandomlyBryan Task Tracker", layout="wide")
+st.set_page_config(page_title="RandomlyBryan", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -70,10 +70,9 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
-# UPDATED: Added anchor alignment to center the entire header on the screen
-st.title("🗓️ Personal Tracker Dashboard", anchor=False)
+# FIXED: Removed the dual st.title declaration to fix the overlap text glitch
 st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif; margin-top: -60px;'>🗓️ Personal Tracker Dashboard</h1>", 
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
 )
 st.markdown("---")
@@ -87,7 +86,7 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 # LEFT PANEL: COMPACT TABBED WORKSPACE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Command Center")
+    st.header("📋 Workspace Control")
     
     tab_alerts, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "➕ Add New", "⚙️ Manage Existing"])
     
@@ -234,7 +233,7 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                st.rerun()
+                                .rerun()
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
