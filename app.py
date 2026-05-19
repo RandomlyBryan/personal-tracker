@@ -126,6 +126,14 @@ with left_panel:
     # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Completed Work Stager")
+        
+        # NEW: Individual line-by-line profile copy section
+        st.markdown("**📋 Quick Profile Copy Assets:**")
+        st.code("Bryan Reyes", language=None)
+        st.code("work.bryanc@gmail.com", language=None)
+        st.code("Marketing & Reporting VA", language=None)
+        
+        st.markdown("---")
         st.write("Type out your tasks below as you finish them. They will accumulate into a ready-to-copy report block.")
 
         # Single bullet entry form
@@ -142,11 +150,8 @@ with left_panel:
 
         st.markdown("---")
 
-        # Static employee meta data profile block strings
+        # Simplified master output header
         emp_header = (
-            f"Employee name: Bryan Reyes\n"
-            f"Work email: work.bryanc@gmail.com\n"
-            f"Role / Position: Marketing & Reporting VA\n"
             f"Date: {today.strftime(DATE_FORMAT)}\n"
             f"----------------------------------------\n"
             f"Completed Tasks & Actions Log:\n"
@@ -159,7 +164,6 @@ with left_panel:
             compiled_report = f"{emp_header}• (No work logged yet today. Use the form above to add lines.)"
             
         st.markdown("**Your Compiled EOD Summary Output:**")
-        # Displays everything inside one text frame with the single click copy capability built right into the frame
         st.code(compiled_report, language=None)
         
         if not eod_df.empty:
