@@ -8,6 +8,7 @@ st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # 2. Database File Setup
 DB_FILE = "tasks_db.csv"
+DATE_FORMAT = "%d/%m/%Y"  # Centralized format config for DD/MM/YYYY
 
 # Load existing tasks or initialize defaults
 if not os.path.exists(DB_FILE):
@@ -16,8 +17,8 @@ if not os.path.exists(DB_FILE):
         "task_name": ["Weekly Tracker Maintenance", "Monthly Budget Check-in"],
         "frequency": ["Weekly", "Monthly"],
         "last_completed": [
-            (datetime.now() - timedelta(days=8)).strftime("%Y-%m-%d"), 
-            (datetime.now() - timedelta(days=32)).strftime("%Y-%m-%d")
+            (datetime.now() - timedelta(days=8)).strftime(DATE_FORMAT), 
+            (datetime.now() - timedelta(days=32)).strftime(DATE_FORMAT)
         ]
     }
     df = pd.DataFrame(starter_data)
@@ -40,7 +41,8 @@ today = datetime.now().date()
 reminders_found = False
 
 for index, row in df.iterrows():
-    last_comp_date = datetime.strptime(str(row['last_completed']), "%Y-%m-%d").date()
+    # Read stored string date using the new format
+    last_comp_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
     days_since = (today - last_comp_date).days
     
     is_overdue = False
@@ -60,7 +62,8 @@ for index, row in df.iterrows():
             st.warning(msg)
         with col_btn:
             if st.button("Mark Completed", key=f"btn_{row['task_id']}"):
-                df.at[index, 'last_completed'] = today.strftime("%Y-%m-%d")
+                # Save the new completion stamp using the updated format
+                df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
                 save_db(df)
                 st.rerun()
 
@@ -73,16 +76,23 @@ st.markdown("---")
 st.subheader("📋 Master Schedule Overview")
 
 df_display = df.copy()
-df_display['Last Completed'] = pd.to_datetime(df_display['last_completed']).dt.date
 
+# Parse the incoming string representations to raw date objects for math calculation
+parsed_dates = []
 next_dues = []
+
 for index, row in df_display.iterrows():
+    base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+    parsed_dates.append(base_date)
+    
     if row['frequency'] == "Weekly":
-        next_dues.append(row['Last Completed'] + timedelta(days=7))
+        next_dues.append(base_date + timedelta(days=7))
     else:
-        next_dues.append(row['Last Completed'] + timedelta(days=30))
-        
-df_display['Next Due Date'] = next_dues
+        next_dues.append(base_date + timedelta(days=30))
+
+# Format the clean date structures directly into the custom text string template
+df_display['Last Completed'] = [d.strftime(DATE_FORMAT) for d in parsed_dates]
+df_display['Next Due Date'] = [d.strftime(DATE_FORMAT) for d in next_dues]
 
 st.dataframe(
     df_display[['task_name', 'frequency', 'Last Completed', 'Next Due Date']],
@@ -97,7 +107,6 @@ st.subheader("➕ Add Custom Recurring Task")
 with st.form("new_task_form", clear_on_submit=True):
     new_name = st.text_input("Task Description")
     new_freq = st.selectbox("Interval Cycle", ["Weekly", "Monthly"])
-    # FIXED LINE BELOW: Changed form_submit_with_button to form_submit_button
     submitted = st.form_submit_button("Create Entry")
     
     if submitted and new_name:
@@ -108,7 +117,8 @@ with st.form("new_task_form", clear_on_submit=True):
             "task_id": new_id,
             "task_name": new_name,
             "frequency": new_freq,
-            "last_completed": default_past.strftime("%Y-%m-%d")
+            # Assign the created past milestone via our unified format constraint
+            "last_completed": default_past.strftime(DATE_FORMAT)
         }
         
         df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
