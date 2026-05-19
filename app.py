@@ -5,15 +5,15 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from streamlit_calendar import calendar  # Imports the visual calendar component
 
-# 1. Page Configuration (Wide mode is essential for side-by-side)
+# 1. Page Configuration
 st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # 2. Database File Setup
 DB_FILE = "tasks_db.csv"
 DATE_FORMAT = "%d/%m/%Y"
 
-# Initialize temporary memory states
 if "editing_task_id" not in st.session_state:
     st.session_state.editing_task_id = None
 if "emails_sent_today" not in st.session_state:
@@ -23,11 +23,11 @@ if "emails_sent_today" not in st.session_state:
 if not os.path.exists(DB_FILE):
     starter_data = {
         "task_id": [1, 2, 3],
-        "task_name": ["Daily Standup & Coding Check-in", "Weekly Tracker Maintenance", "Monthly Budget Check-in"],
+        "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
         "task_description": [
-            "Review yesterdays work and map out what to code next.",
-            "1. Check app for typos.\n2. Verify database values on GitHub.",
-            "1. Open online banking.\n2. Export statements to spreadsheet."
+            "Review code checklist.",
+            "Verify remote logs and verify files.",
+            "Export statement values to master table."
         ],
         "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
@@ -40,59 +40,30 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    if "task_description" not in df.columns:
-        df["task_description"] = "No instructions provided yet."
 
-# Helper function to save changes to our file
 def save_db(dataframe):
     dataframe.to_csv(DB_FILE, index=False)
 
-# Helper function to fire off notification emails safely
-def send_email_notification(task_name, days_overdue, description):
-    try:
-        secret_cfg = st.secrets["email"]
-        msg = MIMEMultipart()
-        msg['From'] = secret_cfg["sender_email"]
-        msg['To'] = secret_cfg["receiver_email"]
-        msg['Subject'] = f"⏰ Tracker Alert: {task_name} Needs Attention!"
-        
-        body = f"Hello!\n\nThis is an automated reminder that your task: '{task_name}' requires an update.\nIt was last completed {days_overdue} days ago.\n\n📝 Instructions:\n{description}\n\nUpdate it here: https://share.streamlit.io/"
-        msg.attach(MIMEText(body, 'plain'))
-        
-        with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
-            server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
-            server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
-        return True
-    except:
-        return False
-
-# Application UI Header
-st.title("🗓️ Personal Tracker Dashboard")
-st.markdown("---")
-
-# Helper to map frequencies to numeric intervals
 def get_days_interval(freq_string):
-    if freq_string == "Daily":
-        return 1
-    elif freq_string == "Weekly":
-        return 7
-    else:
-        return 30
+    if freq_string == "Daily": return 1
+    elif freq_string == "Weekly": return 7
+    else: return 30
+
+st.title("🗓️ Personal Tracker & Interactive Calendar")
+st.markdown("---")
 
 today = datetime.now().date()
 
-# ==========================================
-# SPLIT INTERFACE INTO TWO SIDE-BY-SIDE PANELS
-# ==========================================
+# Create side-by-side split screen panels
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
-# LEFT PANEL: ACTIVE TASKS, REMINDERS & BUILDER
+# LEFT PANEL: ACTIONABLE TRACKER INTERFACE
 # ------------------------------------------
 with left_panel:
     st.header("📋 Task & Routine Manager")
     
-    # --- Reminders Sub-section ---
+    # --- Urgent Alerts ---
     st.subheader("🔔 Urgent Updates")
     reminders_found = False
     
@@ -108,18 +79,10 @@ with left_panel:
                 st.warning(f"**{row['task_name']}** due! ({days_since} days since update)")
                 with st.expander("📄 Instructions"):
                     st.write(row['task_description'])
-                
-                # Background email trigger
-                if row['task_id'] not in st.session_state.emails_sent_today:
-                    if send_email_notification(row['task_name'], days_since, row['task_description']):
-                        st.session_state.emails_sent_today.append(row['task_id'])
-                        st.info("📧 Alert email dispatched.")
             with col_btn:
                 if st.button("Complete", key=f"remind_btn_{row['task_id']}"):
                     df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
                     save_db(df)
-                    if row['task_id'] in st.session_state.emails_sent_today:
-                        st.session_state.emails_sent_today.remove(row['task_id'])
                     st.rerun()
                     
     if not reminders_found:
@@ -127,13 +90,10 @@ with left_panel:
         
     st.markdown("---")
     
-    # --- Edit / Delete Schedule list ---
+    # --- Quick Edit Layout ---
     st.subheader("⚙️ Edit Schedule Items")
-    
     for index, row in df.iterrows():
-        # Layout individual edit records
         ec1, ec2, ec3 = st.columns([3, 1, 1])
-        
         if st.session_state.editing_task_id == row['task_id']:
             with ec1:
                 edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}")
@@ -146,9 +106,6 @@ with left_panel:
                     df.at[index, 'task_description'] = edit_desc
                     df.at[index, 'frequency'] = edit_freq
                     save_db(df)
-                    st.session_state.editing_task_id = None
-                    st.rerun()
-                if st.button("❌", key=f"c_{row['task_id']}"):
                     st.session_state.editing_task_id = None
                     st.rerun()
         else:
@@ -167,7 +124,7 @@ with left_panel:
 
     st.markdown("---")
     
-    # --- Creation Engine ---
+    # --- Task Creation Engine ---
     st.subheader("➕ Create Custom Item")
     with st.form("new_task_form", clear_on_submit=True):
         new_name = st.text_input("Task Name / Title")
@@ -192,37 +149,43 @@ with left_panel:
             st.rerun()
 
 # ------------------------------------------
-# RIGHT PANEL: VISUAL SCHEDULE CALENDAR GRID
+# RIGHT PANEL: FULL MONTH INTERACTIVE CALENDAR GRID
 # ------------------------------------------
 with right_panel:
-    st.header("📅 Visual Schedule & Agenda")
+    st.header("📅 Visual Monthly Calendar")
     
-    # Format and process calendar calculations map
-    cal_events = []
+    calendar_events = []
+    
     for index, row in df.iterrows():
         base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
         target_span = get_days_interval(row['frequency'])
         next_due = base_date + timedelta(days=target_span)
         
-        cal_events.append({
-            "Task": row['task_name'],
-            "Frequency": row['frequency'],
-            "Last Updated": base_date.strftime(DATE_FORMAT),
-            "Next Due Date": next_due.strftime(DATE_FORMAT),
-            "Status": "⚠️ Overdue" if today >= next_due else "✅ OK"
+        # Color code events: Red if overdue, Blue if safe
+        is_overdue = today >= next_due
+        event_color = "#FF4B4B" if is_overdue else "#1C83E1"
+        
+        # Format events into the exact calendar schema template
+        calendar_events.append({
+            "title": f"⚠️ {row['task_name']}" if is_overdue else row['task_name'],
+            "start": next_due.strftime("%Y-%m-%d"),
+            "end": next_due.strftime("%Y-%m-%d"),
+            "backgroundColor": event_color,
+            "borderColor": event_color,
+            "allDay": True
         })
         
-    cal_df = pd.DataFrame(cal_events)
+    # Calendar UI Configurations Options
+    calendar_options = {
+        "initialView": "dayGridMonth",
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": ""
+        },
+        "editable": False,
+        "selectable": True
+    }
     
-    if not cal_df.empty:
-        # Render high-visibility metrics for dates
-        st.subheader("Next Upcoming Targets")
-        st.dataframe(cal_df, use_container_width=True, hide_index=True)
-        
-        # Display simple agenda breakdown timeline
-        st.subheader("Timeline Agenda Tracker")
-        for event in cal_events:
-            status_color = "🔴" if event["Status"] == "⚠️ Overdue" else "🟢"
-            st.info(f"{status_color} **{event['Next Due Date']}** — {event['Task']} ({event['Frequency']})")
-    else:
-        st.info("No items scheduled to build out calendar dates.")
+    # Render the physical monthly calendar widget
+    calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
