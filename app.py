@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="Task Tracker", layout="wide")
+st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -30,7 +30,7 @@ DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
 DATE_FORMAT = "%d/%m/%Y"
-STORAGE_DATE_FORMAT = "%Y-%m-%d"  # Standardized date format for secure backend processing
+STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
 # Initialize temporary memory states
 if "editing_task_id" not in st.session_state:
@@ -42,11 +42,11 @@ if "emails_sent_today" not in st.session_state:
 
 # Load/Initialize Databases
 if not os.path.exists(DB_FILE):
-    # Initialize defaults with standard backend string formats
     starter_data = {
         "task_id": [1, 2, 3],
         "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
+        "task_url": ["", "", ""],  # NEW: URL storage column in recurring engine
         "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
             (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
@@ -58,6 +58,9 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
+    # Upgrade structural safety check: ensure task_url column exists in existing files
+    if "task_url" not in df.columns:
+        df["task_url"] = ""
 
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
@@ -79,7 +82,6 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
-# Secure date parsing helper to handle variations safely
 def parse_date_safely(date_str):
     try:
         return datetime.strptime(str(date_str), STORAGE_DATE_FORMAT).date()
@@ -105,7 +107,7 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 # LEFT PANEL: COMPACT TABBED WORKSPACE WITH EOD ENGINE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Command Center")
+    st.header("📋 Workspace Control")
     
     tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log Stager", "➕ Add New", "⚙️ Manage Existing"])
     
@@ -124,8 +126,12 @@ with left_panel:
                 col_text, col_btn = st.columns([3, 1])
                 with col_text:
                     st.warning(f"**{row['task_name']}** ({row['frequency']})")
-                    with st.expander("📄 View Details"):
+                    with st.expander("📄 View Details & Resources"):
                         st.write(row['task_description'])
+                        # NEW: Display link if one exists
+                        task_link = str(row.get('task_url', '')).strip()
+                        if task_link and task_link != "nan":
+                            st.link_button("🔗 Open Direct Link", url=task_link, use_container_width=True)
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
                         df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
@@ -137,9 +143,9 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
-        st.subheader("Daily Completed Task")
+        st.subheader("Daily Completed Work Stager")
         
-        st.markdown("**📋 Quick Copy:**")
+        st.markdown("**📋 Quick Profile Copy Assets:**")
         st.code("Bryan Reyes", language=None)
         st.code("work.bryanc@gmail.com", language=None)
         st.code("Marketing & Reporting VA", language=None)
@@ -203,9 +209,10 @@ with left_panel:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
+                # NEW: Added URL input block inside creation form space
+                new_url = st.text_input("Task URL Link (Optional - e.g. Google Sheet Link)")
                 new_freq = st.selectbox("Interval", ["Daily", "Weekly", "Monthly"])
-                # MODIFICATION: Added custom start date selector tool for recurring items
-                start_date = st.date_input("Routine Start Date / Base Baseline Date", value=today)
+                start_date = st.date_input("Routine Start Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
                 
                 if submitted and new_name:
@@ -215,8 +222,8 @@ with left_panel:
                         "task_id": new_id,
                         "task_name": new_name,
                         "task_description": new_desc if new_desc else "No instructions.",
+                        "task_url": new_url.strip(),  # Save URL line to database
                         "frequency": new_freq,
-                        # Save the selected start date cleanly into the tracker storage
                         "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)
                     }
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
@@ -256,14 +263,16 @@ with left_panel:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
                         edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
+                        # NEW: Added inline editing input line for the URL element
+                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '') if pd.notna(row.get('task_url', '')) else ''), key=f"eurl_{row['task_id']}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
-                        # MODIFICATION: Added an inline editable calendar tool to adjust baseline dates
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
                     with ec3:
                         if st.button("💾", key=f"s_{row['task_id']}"):
                             df.at[index, 'task_name'] = edit_name
                             df.at[index, 'task_description'] = edit_desc
+                            df.at[index, 'task_url'] = edit_url.strip()
                             df.at[index, 'frequency'] = edit_freq
                             df.at[index, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
                             save_db(df, DB_FILE)
@@ -272,7 +281,10 @@ with left_panel:
                 else:
                     with ec1:
                         st.write(f"**{row['task_name']}** ({row['frequency']})")
-                        st.caption(f"Baseline Base Date: {current_task_date.strftime(DATE_FORMAT)}")
+                        st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
+                        current_url_val = str(row.get('task_url', '')).strip()
+                        if current_url_val and current_url_val != "nan" and current_url_val != "":
+                            st.caption(f"🔗 Link: {current_url_val}")
                     with ec2:
                         if st.button("✏️", key=f"em_{row['task_id']}"):
                             st.session_state.editing_task_id = row['task_id']
@@ -297,83 +309,4 @@ with left_panel:
                             edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
                             edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
                         with nc2:
-                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date, key=f"endate_{row['note_id']}", label_visibility="collapsed")
-                        with nc3:
-                            if st.button("💾", key=f"s_note_{row['note_id']}"):
-                                notes_df.at[index, 'title'] = edit_note_title
-                                notes_df.at[index, 'details'] = edit_note_details
-                                notes_df.at[index, 'event_date'] = edit_note_date.strftime(STORAGE_DATE_FORMAT)
-                                save_db(notes_df, NOTES_FILE)
-                                st.session_state.editing_note_id = None
-                                st.rerun()
-                            if st.button("❌", key=f"c_note_{row['note_id']}"):
-                                st.session_state.editing_note_id = None
-                                st.rerun()
-                    else:
-                        with nc1:
-                            f_date = parse_date_safely(row['event_date']).strftime(DATE_FORMAT)
-                            st.write(f"📌 **{f_date}** — {row['title']}")
-                            if row['details']:
-                                with st.expander("📄 View Agenda Notes"):
-                                    st.write(row['details'])
-                        with nc2:
-                            if st.button("✏️", key=f"em_note_{row['note_id']}"):
-                                st.session_state.editing_note_id = row['note_id']
-                                st.rerun()
-                        with nc3:
-                            if st.button("🗑️", key=f"del_note_{row['note_id']}"):
-                                notes_df = notes_df[notes_df['note_id'] != row['note_id']]
-                                save_db(notes_df, NOTES_FILE)
-                                st.rerun()
-                    st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
-
-# ------------------------------------------
-# RIGHT PANEL: FLUID VISUAL CALENDAR
-# ------------------------------------------
-with right_panel:
-    st.header("📅 Monthly Overview")
-    
-    calendar_events = []
-    
-    # 1. Plot Tasks
-    for index, row in df.iterrows():
-        base_date = parse_date_safely(row['last_completed'])
-        target_span = get_days_interval(row['frequency'])
-        next_due = base_date + timedelta(days=target_span)
-        is_overdue = today >= next_due
-        event_color = "#FF4B4B" if is_overdue else "#1C83E1"
-        
-        calendar_events.append({
-            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"🔄 {row['task_name']}",
-            "start": next_due.strftime(STORAGE_DATE_FORMAT),
-            "end": next_due.strftime(STORAGE_DATE_FORMAT),
-            "backgroundColor": event_color,
-            "borderColor": event_color,
-            "allDay": True
-        })
-        
-    # 2. Plot Notes
-    for index, row in notes_df.iterrows():
-        n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
-        calendar_events.append({
-            "title": f"📌 {row['title']}",
-            "start": n_date,
-            "end": n_date,
-            "backgroundColor": "#7A41F3",
-            "borderColor": "#7A41F3",
-            "allDay": True
-        })
-        
-    calendar_options = {
-        "initialView": "dayGridMonth",
-        "headerToolbar": {
-            "left": "prev,next today",
-            "center": "title",
-            "right": ""
-        },
-        "editable": False,
-        "selectable": True,
-        "height": "auto"
-    }
-    
-    calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
+                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date
