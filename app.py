@@ -197,7 +197,7 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER WITH NEXT DAY PRIORITIES ---
     with tab_eod:
-        st.subheader("Daily Completed Task Tracker")
+        st.subheader("Daily Task Report")
         
         st.markdown("**📋 Quick Copy**")
         st.code("Bryan Reyes", language=None)
@@ -213,7 +213,7 @@ with left_panel:
             st.markdown("**Add Completed Tasks:**")
             with st.form("eod_add_form", clear_on_submit=True):
                 log_input = st.text_input("Item finished today:", key="eod_in")
-                add_bullet = st.form_submit_button("Log Work")
+                add_bullet = st.form_submit_button("Add")
                 if add_bullet and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                     new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
@@ -222,10 +222,10 @@ with left_panel:
                     st.rerun()
                     
         with prio_log_col:
-            st.markdown("**Add Manual Tomorrow Priorities:**")
+            st.markdown("**Next Day Task Priorities:**")
             with st.form("prio_add_form", clear_on_submit=True):
                 prio_input = st.text_input("Item for tomorrow:", key="prio_in")
-                add_prio = st.form_submit_button("Stage Priority")
+                add_prio = st.form_submit_button("Add")
                 if add_prio and prio_input:
                     new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
                     new_prio_row = {"prio_id": new_prio_id, "item_text": prio_input.strip()}
@@ -247,7 +247,7 @@ with left_panel:
         else:
             compiled_report = f"{emp_header}• (No work logged yet today.)"
             
-        st.markdown("**Your Compiled EOD Summary Output:**")
+        st.markdown("**EOD Summary:**")
         st.code(compiled_report, language=None)
         
         # 2. AUTOMATION: Build the Next Day Priorities segment dynamically
@@ -279,7 +279,7 @@ with left_panel:
         else:
             compiled_prio_report = prio_header + "• No priorities scheduled for tomorrow."
             
-        st.markdown("**Your Compiled Next Day Priorities Output:**")
+        st.markdown("**Next Day Priorities:**")
         st.code(compiled_prio_report, language=None)
         
         # Global cleaning dashboard bar
