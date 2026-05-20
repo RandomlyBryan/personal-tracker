@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="My Personal Tracker", layout="wide")
+st.set_page_config(page_title="Task Tracker", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -105,7 +105,7 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 # LEFT PANEL: COMPACT TABBED WORKSPACE WITH EOD ENGINE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Workspace Control")
+    st.header("📋 Command Center")
     
     tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log Stager", "➕ Add New", "⚙️ Manage Existing"])
     
@@ -137,9 +137,9 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
-        st.subheader("Daily Completed Work Stager")
+        st.subheader("Daily Completed Task")
         
-        st.markdown("**📋 Quick Profile Copy Assets:**")
+        st.markdown("**📋 Quick Copy:**")
         st.code("Bryan Reyes", language=None)
         st.code("work.bryanc@gmail.com", language=None)
         st.code("Marketing & Reporting VA", language=None)
