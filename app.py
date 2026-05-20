@@ -290,7 +290,8 @@ with left_panel:
                             df = df[df['task_id'] != row['task_id']]
                             save_db(df, DB_FILE)
                             st.rerun()
-                st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allowed_html=True)
+                # FIXED: Changed 'unsafe_allowed_html' to 'unsafe_allow_html' to stop the crash
+                st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
         with m_note:
             if notes_df.empty:
@@ -333,6 +334,7 @@ with left_panel:
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
                                 save_db(notes_df, NOTES_FILE)
                                 st.rerun()
+                    # FIXED: Changed 'unsafe_allowed_html' to 'unsafe_allow_html' to stop the crash
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
 # ------------------------------------------
@@ -384,8 +386,5 @@ with right_panel:
         "height": "auto"
     }
     
-    # FIXED: Re-enabled clean plotting execution statement block here
-    if calendar_events:
-        calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
-    else:
-        st.info("Add standard routines or temporary meeting notes to populate calendar timeline dates.")
+    # Render calendar
+    calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
