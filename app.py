@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
 
 # 1. Page Configuration
-st.set_page_config(page_title="Randomly Bryan", layout="wide")
+st.set_page_config(page_title="My Personal Tracker", layout="wide")
 
 # CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
 st.markdown(
@@ -30,6 +30,7 @@ DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
 DATE_FORMAT = "%d/%m/%Y"
+STORAGE_DATE_FORMAT = "%Y-%m-%d"  # Standardized date format for secure backend processing
 
 # Initialize temporary memory states
 if "editing_task_id" not in st.session_state:
@@ -41,15 +42,16 @@ if "emails_sent_today" not in st.session_state:
 
 # Load/Initialize Databases
 if not os.path.exists(DB_FILE):
+    # Initialize defaults with standard backend string formats
     starter_data = {
         "task_id": [1, 2, 3],
         "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
         "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
-            (datetime.now() - timedelta(days=2)).strftime(DATE_FORMAT), 
-            (datetime.now() - timedelta(days=8)).strftime(DATE_FORMAT), 
-            (datetime.now() - timedelta(days=32)).strftime(DATE_FORMAT)
+            (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
+            (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), 
+            (datetime.now() - timedelta(days=32)).strftime(STORAGE_DATE_FORMAT)
         ]
     }
     df = pd.DataFrame(starter_data)
@@ -77,6 +79,16 @@ def get_days_interval(freq_string):
     elif freq_string == "Weekly": return 7
     else: return 30
 
+# Secure date parsing helper to handle variations safely
+def parse_date_safely(date_str):
+    try:
+        return datetime.strptime(str(date_str), STORAGE_DATE_FORMAT).date()
+    except ValueError:
+        try:
+            return datetime.strptime(str(date_str), DATE_FORMAT).date()
+        except ValueError:
+            return datetime.now().date()
+
 # Perfectly centered main screen title
 st.markdown(
     "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
@@ -93,9 +105,9 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 # LEFT PANEL: COMPACT TABBED WORKSPACE WITH EOD ENGINE
 # ------------------------------------------
 with left_panel:
-    st.header("📋 Command Center")
+    st.header("📋 Workspace Control")
     
-    tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log", "➕ Add New", "⚙️ Manage Existing"])
+    tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Actions", "📝 EOD Log Stager", "➕ Add New", "⚙️ Manage Existing"])
     
     # --- TAB 1: URGENT ALERTS ---
     with tab_alerts:
@@ -103,7 +115,7 @@ with left_panel:
         reminders_found = False
         
         for index, row in df.iterrows():
-            last_comp_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+            last_comp_date = parse_date_safely(row['last_completed'])
             days_since = (today - last_comp_date).days
             needed_days = get_days_interval(row['frequency'])
             
@@ -116,7 +128,7 @@ with left_panel:
                         st.write(row['task_description'])
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
-                        df.at[index, 'last_completed'] = today.strftime(DATE_FORMAT)
+                        df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                         save_db(df, DB_FILE)
                         st.rerun()
                         
@@ -125,10 +137,9 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
-        st.subheader("Dialy Completed Task Log")
+        st.subheader("Daily Completed Work Stager")
         
-        # NEW: Individual line-by-line profile copy section
-        st.markdown("**📋 Quick Details:**")
+        st.markdown("**📋 Quick Profile Copy Assets:**")
         st.code("Bryan Reyes", language=None)
         st.code("work.bryanc@gmail.com", language=None)
         st.code("Marketing & Reporting VA", language=None)
@@ -136,7 +147,6 @@ with left_panel:
         st.markdown("---")
         st.write("Type out your tasks below as you finish them. They will accumulate into a ready-to-copy report block.")
 
-        # Single bullet entry form
         with st.form("eod_add_form", clear_on_submit=True):
             log_input = st.text_input("Enter completed action item / accomplishment:")
             add_bullet = st.form_submit_button("Stage Accomplishment")
@@ -150,7 +160,6 @@ with left_panel:
 
         st.markdown("---")
 
-        # Simplified master output header
         emp_header = (
             f"Date: {today.strftime(DATE_FORMAT)}\n"
             f"----------------------------------------\n"
@@ -195,19 +204,20 @@ with left_panel:
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
                 new_freq = st.selectbox("Interval", ["Daily", "Weekly", "Monthly"])
+                # MODIFICATION: Added custom start date selector tool for recurring items
+                start_date = st.date_input("Routine Start Date / Base Baseline Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
                 
                 if submitted and new_name:
                     new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    days_back = get_days_interval(new_freq) + 1
-                    default_past = today - timedelta(days=days_back)
                     
                     new_row = {
                         "task_id": new_id,
                         "task_name": new_name,
                         "task_description": new_desc if new_desc else "No instructions.",
                         "frequency": new_freq,
-                        "last_completed": default_past.strftime(DATE_FORMAT)
+                        # Save the selected start date cleanly into the tracker storage
+                        "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)
                     }
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     save_db(df, DB_FILE)
@@ -226,7 +236,7 @@ with left_panel:
                         "note_id": new_note_id,
                         "title": note_title,
                         "details": note_details if note_details else "",
-                        "event_date": note_date.strftime("%Y-%m-%d")
+                        "event_date": note_date.strftime(STORAGE_DATE_FORMAT)
                     }
                     notes_df = pd.concat([notes_df, pd.DataFrame([new_note_row])], ignore_index=True)
                     save_db(notes_df, NOTES_FILE)
@@ -240,23 +250,29 @@ with left_panel:
         with m_task:
             for index, row in df.iterrows():
                 ec1, ec2, ec3 = st.columns([3, 1, 1])
+                current_task_date = parse_date_safely(row['last_completed'])
+                
                 if st.session_state.editing_task_id == row['task_id']:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
                         edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
+                        # MODIFICATION: Added an inline editable calendar tool to adjust baseline dates
+                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
                     with ec3:
                         if st.button("💾", key=f"s_{row['task_id']}"):
                             df.at[index, 'task_name'] = edit_name
                             df.at[index, 'task_description'] = edit_desc
                             df.at[index, 'frequency'] = edit_freq
+                            df.at[index, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
                             save_db(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
                 else:
                     with ec1:
                         st.write(f"**{row['task_name']}** ({row['frequency']})")
+                        st.caption(f"Baseline Base Date: {current_task_date.strftime(DATE_FORMAT)}")
                     with ec2:
                         if st.button("✏️", key=f"em_{row['task_id']}"):
                             st.session_state.editing_task_id = row['task_id']
@@ -276,7 +292,7 @@ with left_panel:
                     nc1, nc2, nc3 = st.columns([3, 1, 1])
                     
                     if st.session_state.editing_note_id == row['note_id']:
-                        current_note_date = datetime.strptime(row['event_date'], "%Y-%m-%d").date()
+                        current_note_date = parse_date_safely(row['event_date'])
                         with nc1:
                             edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
                             edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
@@ -286,7 +302,7 @@ with left_panel:
                             if st.button("💾", key=f"s_note_{row['note_id']}"):
                                 notes_df.at[index, 'title'] = edit_note_title
                                 notes_df.at[index, 'details'] = edit_note_details
-                                notes_df.at[index, 'event_date'] = edit_note_date.strftime("%Y-%m-%d")
+                                notes_df.at[index, 'event_date'] = edit_note_date.strftime(STORAGE_DATE_FORMAT)
                                 save_db(notes_df, NOTES_FILE)
                                 st.session_state.editing_note_id = None
                                 st.rerun()
@@ -295,7 +311,7 @@ with left_panel:
                                 st.rerun()
                     else:
                         with nc1:
-                            f_date = datetime.strptime(row['event_date'], "%Y-%m-%d").strftime(DATE_FORMAT)
+                            f_date = parse_date_safely(row['event_date']).strftime(DATE_FORMAT)
                             st.write(f"📌 **{f_date}** — {row['title']}")
                             if row['details']:
                                 with st.expander("📄 View Agenda Notes"):
@@ -321,7 +337,7 @@ with right_panel:
     
     # 1. Plot Tasks
     for index, row in df.iterrows():
-        base_date = datetime.strptime(str(row['last_completed']), DATE_FORMAT).date()
+        base_date = parse_date_safely(row['last_completed'])
         target_span = get_days_interval(row['frequency'])
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
@@ -329,8 +345,8 @@ with right_panel:
         
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"🔄 {row['task_name']}",
-            "start": next_due.strftime("%Y-%m-%d"),
-            "end": next_due.strftime("%Y-%m-%d"),
+            "start": next_due.strftime(STORAGE_DATE_FORMAT),
+            "end": next_due.strftime(STORAGE_DATE_FORMAT),
             "backgroundColor": event_color,
             "borderColor": event_color,
             "allDay": True
@@ -338,10 +354,11 @@ with right_panel:
         
     # 2. Plot Notes
     for index, row in notes_df.iterrows():
+        n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
             "title": f"📌 {row['title']}",
-            "start": str(row['event_date']),
-            "end": str(row['event_date']),
+            "start": n_date,
+            "end": n_date,
             "backgroundColor": "#7A41F3",
             "borderColor": "#7A41F3",
             "allDay": True
