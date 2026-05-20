@@ -58,8 +58,10 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
+    # DATA MIGRATION BRIDGE: Automatically updates old data files with the new URL column seamlessly
     if "task_url" not in df.columns:
         df["task_url"] = ""
+        df.to_csv(DB_FILE, index=False)
 
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
@@ -89,6 +91,36 @@ def parse_date_safely(date_str):
             return datetime.strptime(str(date_str), DATE_FORMAT).date()
         except ValueError:
             return datetime.now().date()
+
+# RE-ADDED: Secure email engine to dispatch dashboard alerts
+def send_email_notification(task_name, days_overdue, description, resource_url):
+    try:
+        secret_cfg = st.secrets["email"]
+        
+        msg = MIMEMultipart()
+        msg['From'] = secret_cfg["sender_email"]
+        msg['To'] = secret_cfg["receiver_email"]
+        msg['Subject'] = f"⏰ Routine Reminder: {task_name} is Overdue!"
+        
+        link_line = f"🔗 Resource Link: {resource_url}\n" if resource_url and str(resource_url) != "nan" and str(resource_url).strip() != "" else ""
+        
+        body = (
+            f"Hello Bryan,\n\n"
+            f"This is an automated alert from your Personal Tracker Dashboard.\n"
+            f"The following routine requires an update:\n\n"
+            f"📌 Task: {task_name} ({days_overdue} days since last update)\n"
+            f"📝 Instructions:\n{description}\n"
+            f"{link_line}\n"
+            f"Access your live control panel to mark this complete: https://share.streamlit.io/"
+        )
+        msg.attach(MIMEText(body, 'plain'))
+        
+        with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
+            server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
+            server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
+        return True
+    except Exception as e:
+        return False
 
 # Centered main screen title
 st.markdown(
@@ -130,10 +162,21 @@ with left_panel:
                         task_link = str(row.get('task_url', '')).strip()
                         if task_link and task_link != "nan" and task_link != "":
                             st.link_button("🔗 Open Direct Link", url=task_link, use_container_width=True)
+                    
+                    # RE-ADDED: Email alert background auto-trigger sequence
+                    if row['task_id'] not in st.session_state.emails_sent_today:
+                        t_desc = row['task_description'] if pd.notna(row['task_description']) else "No instructions provided."
+                        t_url = row['task_url'] if pd.notna(row['task_url']) else ""
+                        if send_email_notification(row['task_name'], days_since, t_desc, t_url):
+                            st.session_state.emails_sent_today.append(row['task_id'])
+                            st.info(f"📧 Notification dispatched for '{row['task_name']}'!")
+                            
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
                         df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                         save_db(df, DB_FILE)
+                        if row['task_id'] in st.session_state.emails_sent_today:
+                            st.session_state.emails_sent_today.remove(row['task_id'])
                         st.rerun()
                         
         if not reminders_found:
@@ -290,7 +333,6 @@ with left_panel:
                             df = df[df['task_id'] != row['task_id']]
                             save_db(df, DB_FILE)
                             st.rerun()
-                # FIXED: Changed 'unsafe_allowed_html' to 'unsafe_allow_html' to stop the crash
                 st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
         with m_note:
@@ -334,7 +376,6 @@ with left_panel:
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
                                 save_db(notes_df, NOTES_FILE)
                                 st.rerun()
-                    # FIXED: Changed 'unsafe_allowed_html' to 'unsafe_allow_html' to stop the crash
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
 # ------------------------------------------
