@@ -259,4 +259,133 @@ with left_panel:
                 if st.session_state.editing_task_id == row['task_id']:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
-                        edit_desc = st.text_area
+                        edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
+                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '') if pd.notna(row.get('task_url', '')) else ''), key=f"eurl_{row['task_id']}")
+                    with ec2:
+                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
+                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
+                    with ec3:
+                        if st.button("💾", key=f"s_{row['task_id']}"):
+                            df.at[index, 'task_name'] = edit_name
+                            df.at[index, 'task_description'] = edit_desc
+                            df.at[index, 'task_url'] = edit_url.strip()
+                            df.at[index, 'frequency'] = edit_freq
+                            df.at[index, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
+                            save_db(df, DB_FILE)
+                            st.session_state.editing_task_id = None
+                            st.rerun()
+                else:
+                    with ec1:
+                        st.write(f"**{row['task_name']}** ({row['frequency']})")
+                        st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
+                        current_url_val = str(row.get('task_url', '')).strip()
+                        if current_url_val and current_url_val != "nan" and current_url_val != "":
+                            st.caption(f"🔗 Link: {current_url_val}")
+                    with ec2:
+                        if st.button("✏️", key=f"em_{row['task_id']}"):
+                            st.session_state.editing_task_id = row['task_id']
+                            st.rerun()
+                    with ec3:
+                        if st.button("🗑️", key=f"d_{row['task_id']}"):
+                            df = df[df['task_id'] != row['task_id']]
+                            save_db(df, DB_FILE)
+                            st.rerun()
+                st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allowed_html=True)
+
+        with m_note:
+            if notes_df.empty:
+                st.info("No temporary calendar notes pinned.")
+            else:
+                for index, row in notes_df.iterrows():
+                    nc1, nc2, nc3 = st.columns([3, 1, 1])
+                    
+                    if st.session_state.editing_note_id == row['note_id']:
+                        current_note_date = parse_date_safely(row['event_date'])
+                        with nc1:
+                            edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
+                            edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
+                        with nc2:
+                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date, key=f"endate_{row['note_id']}", label_visibility="collapsed")
+                        with nc3:
+                            if st.button("💾", key=f"s_note_{row['note_id']}"):
+                                notes_df.at[index, 'title'] = edit_note_title
+                                notes_df.at[index, 'details'] = edit_note_details
+                                notes_df.at[index, 'event_date'] = edit_note_date.strftime(STORAGE_DATE_FORMAT)
+                                save_db(notes_df, NOTES_FILE)
+                                st.session_state.editing_note_id = None
+                                st.rerun()
+                            if st.button("❌", key=f"c_note_{row['note_id']}"):
+                                st.session_state.editing_note_id = None
+                                st.rerun()
+                    else:
+                        with nc1:
+                            f_date = parse_date_safely(row['event_date']).strftime(DATE_FORMAT)
+                            st.write(f"📌 **{f_date}** — {row['title']}")
+                            if row['details']:
+                                with st.expander("📄 View Agenda Notes"):
+                                    st.write(row['details'])
+                        with nc2:
+                            if st.button("✏️", key=f"em_note_{row['note_id']}"):
+                                st.session_state.editing_note_id = row['note_id']
+                                st.rerun()
+                        with nc3:
+                            if st.button("🗑️", key=f"del_note_{row['note_id']}"):
+                                notes_df = notes_df[notes_df['note_id'] != row['note_id']]
+                                save_db(notes_df, NOTES_FILE)
+                                st.rerun()
+                    st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+
+# ------------------------------------------
+# RIGHT PANEL: FLUID VISUAL CALENDAR
+# ------------------------------------------
+with right_panel:
+    st.header("📅 Monthly Overview")
+    
+    calendar_events = []
+    
+    # 1. Plot Tasks
+    for index, row in df.iterrows():
+        base_date = parse_date_safely(row['last_completed'])
+        target_span = get_days_interval(row['frequency'])
+        next_due = base_date + timedelta(days=target_span)
+        is_overdue = today >= next_due
+        event_color = "#FF4B4B" if is_overdue else "#1C83E1"
+        
+        calendar_events.append({
+            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"🔄 {row['task_name']}",
+            "start": next_due.strftime(STORAGE_DATE_FORMAT),
+            "end": next_due.strftime(STORAGE_DATE_FORMAT),
+            "backgroundColor": event_color,
+            "borderColor": event_color,
+            "allDay": True
+        })
+        
+    # 2. Plot Notes
+    for index, row in notes_df.iterrows():
+        n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
+        calendar_events.append({
+            "title": f"📌 {row['title']}",
+            "start": n_date,
+            "end": n_date,
+            "backgroundColor": "#7A41F3",
+            "borderColor": "#7A41F3",
+            "allDay": True
+        })
+        
+    calendar_options = {
+        "initialView": "dayGridMonth",
+        "headerToolbar": {
+            "left": "prev,next today",
+            "center": "title",
+            "right": ""
+        },
+        "editable": False,
+        "selectable": True,
+        "height": "auto"
+    }
+    
+    # FIXED: Re-enabled clean plotting execution statement block here
+    if calendar_events:
+        calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
+    else:
+        st.info("Add standard routines or temporary meeting notes to populate calendar timeline dates.")
