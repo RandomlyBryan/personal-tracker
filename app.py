@@ -29,6 +29,7 @@ st.markdown(
 DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
+PRIORITIES_FILE = "next_day_priorities.csv"  # NEW: Persistent storage for staging tomorrow's manual targets
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
@@ -58,7 +59,6 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    # DATA MIGRATION BRIDGE: Automatically updates old data files with the new URL column seamlessly
     if "task_url" not in df.columns:
         df["task_url"] = ""
         df.to_csv(DB_FILE, index=False)
@@ -74,6 +74,13 @@ if not os.path.exists(EOD_FILE):
     eod_df.to_csv(EOD_FILE, index=False)
 else:
     eod_df = pd.read_csv(EOD_FILE)
+
+# Load/Initialize Next Day Priorities storage
+if not os.path.exists(PRIORITIES_FILE):
+    prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
+    prio_df.to_csv(PRIORITIES_FILE, index=False)
+else:
+    prio_df = pd.read_csv(PRIORITIES_FILE)
 
 def save_db(dataframe, filename):
     dataframe.to_csv(filename, index=False)
@@ -92,7 +99,7 @@ def parse_date_safely(date_str):
         except ValueError:
             return datetime.now().date()
 
-# RE-ADDED: Secure email engine to dispatch dashboard alerts
+# Helper function to send automated background alert emails
 def send_email_notification(task_name, days_overdue, description, resource_url):
     try:
         secret_cfg = st.secrets["email"]
@@ -130,21 +137,22 @@ st.markdown(
 st.markdown("---")
 
 today = datetime.now().date()
+tomorrow = today + timedelta(days=1)
 
 # Side-by-side split layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
-# LEFT PANEL: COMPACT TABBED WORKSPACE WITH EOD ENGINE
+# LEFT PANEL: COMPACT TABBED WORKSPACE WITH AUTOMATED EOD ENGINE
 # ------------------------------------------
 with left_panel:
     st.header("📋 Command Center")
     
     tab_alerts, tab_eod, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: URGENT ALERTS ---
+    # --- TAB 1: PENDING TASKS & ALERTS ---
     with tab_alerts:
-        st.subheader("Task For Update")
+        st.subheader("Items Due For Update")
         reminders_found = False
         
         for index, row in df.iterrows():
@@ -163,7 +171,6 @@ with left_panel:
                         if task_link and task_link != "nan" and task_link != "":
                             st.link_button("🔗 Open Direct Link", url=task_link, use_container_width=True)
                     
-                    # RE-ADDED: Email alert background auto-trigger sequence
                     if row['task_id'] not in st.session_state.emails_sent_today:
                         t_desc = row['task_description'] if pd.notna(row['task_description']) else "No instructions provided."
                         t_url = row['task_url'] if pd.notna(row['task_url']) else ""
@@ -175,6 +182,12 @@ with left_panel:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
                         df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                         save_db(df, DB_FILE)
+                        
+                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                        new_log_row = {"log_id": new_log_id, "bullet_text": f"Completed routine task: {row['task_name']}"}
+                        eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                        save_db(eod_df, EOD_FILE)
+                        
                         if row['task_id'] in st.session_state.emails_sent_today:
                             st.session_state.emails_sent_today.remove(row['task_id'])
                         st.rerun()
@@ -182,7 +195,7 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER ---
+    # --- TAB 2: EOD REPORT LOG BUILDER WITH NEXT DAY PRIORITIES ---
     with tab_eod:
         st.subheader("Daily Completed Task Tracker")
         
@@ -192,55 +205,96 @@ with left_panel:
         st.code("Marketing & Reporting VA", language=None)
         
         st.markdown("---")
-        st.write("Type out your tasks below as you finish them. They will accumulate into a ready-to-copy report block.")
-
-        with st.form("eod_add_form", clear_on_submit=True):
-            log_input = st.text_input("Enter completed action item / accomplishment:")
-            add_bullet = st.form_submit_button("Stage Accomplishment")
-            
-            if add_bullet and log_input:
-                new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
-                eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
-                save_db(eod_df, EOD_FILE)
-                st.rerun()
+        
+        # Dual-input layout for both logging accomplishments or staging priorities
+        eod_log_col, prio_log_col = st.columns(2)
+        
+        with eod_log_col:
+            st.markdown("**Add Completed Tasks:**")
+            with st.form("eod_add_form", clear_on_submit=True):
+                log_input = st.text_input("Item finished today:", key="eod_in")
+                add_bullet = st.form_submit_button("Log Work")
+                if add_bullet and log_input:
+                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                    new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
+                    eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                    save_db(eod_df, EOD_FILE)
+                    st.rerun()
+                    
+        with prio_log_col:
+            st.markdown("**Add Manual Tomorrow Priorities:**")
+            with st.form("prio_add_form", clear_on_submit=True):
+                prio_input = st.text_input("Item for tomorrow:", key="prio_in")
+                add_prio = st.form_submit_button("Stage Priority")
+                if add_prio and prio_input:
+                    new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
+                    new_prio_row = {"prio_id": new_prio_id, "item_text": prio_input.strip()}
+                    prio_df = pd.concat([prio_df, pd.DataFrame([new_prio_row])], ignore_index=True)
+                    save_db(prio_df, PRIORITIES_FILE)
+                    st.rerun()
 
         st.markdown("---")
 
+        # 1. Build Accomplishments segment
         emp_header = (
             f"Date: {today.strftime(DATE_FORMAT)}\n"
             f"----------------------------------------\n"
             f"Completed Tasks & Actions Log:\n"
         )
-
         if not eod_df.empty:
             bullet_lines = "\n".join([f"• {row['bullet_text']}" for _, row in eod_df.iterrows()])
             compiled_report = f"{emp_header}{bullet_lines}"
         else:
-            compiled_report = f"{emp_header}• (No work logged yet today. Use the form above to add lines.)"
+            compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**Your Compiled EOD Summary Output:**")
         st.code(compiled_report, language=None)
         
-        if not eod_df.empty:
-            st.markdown(" ")
-            col_space, col_clear = st.columns([3, 1])
-            with col_clear:
-                if st.button("🗑️ Clear Staged Data", help="Wipe out current logs to reset for a new work day"):
-                    eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
-                    save_db(eod_df, EOD_FILE)
-                    st.rerun()
-                    
-            with st.expander("✏️ Modify Individual Staged Bullets"):
-                for idx, r in eod_df.iterrows():
-                    b_col1, b_col2 = st.columns([5, 1])
-                    with b_col1:
-                        st.write(f"- {r['bullet_text']}")
-                    with b_col2:
-                        if st.button("❌", key=f"del_b_{r['log_id']}", help="Remove this single bullet"):
-                            eod_df = eod_df[eod_df['log_id'] != r['log_id']]
-                            save_db(eod_df, EOD_FILE)
-                            st.rerun()
+        # 2. AUTOMATION: Build the Next Day Priorities segment dynamically
+        auto_priorities = []
+        
+        for _, row in df.iterrows():
+            l_completed = parse_date_safely(row['last_completed'])
+            d_since = (today - l_completed).days
+            i_window = get_days_interval(row['frequency'])
+            n_due = l_completed + timedelta(days=i_window)
+            
+            # Condition A: Rollover any tasks currently uncompleted/overdue today
+            if d_since >= i_window:
+                auto_priorities.append(f"• [ROLLOVER] {row['task_name']} (Overdue)")
+            # Condition B: Snag any tasks coming due exactly tomorrow
+            elif n_due == tomorrow:
+                auto_priorities.append(f"• [SCHEDULED] {row['task_name']} (Due Tomorrow)")
+                
+        # Condition C: Append your custom manually typed priorities
+        for _, row in prio_df.iterrows():
+            auto_priorities.append(f"• {row['item_text']}")
+            
+        prio_header = (
+            f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n"
+            f"----------------------------------------\n"
+        )
+        if auto_priorities:
+            compiled_prio_report = prio_header + "\n".join(auto_priorities)
+        else:
+            compiled_prio_report = prio_header + "• No priorities scheduled for tomorrow."
+            
+        st.markdown("**Your Compiled Next Day Priorities Output:**")
+        st.code(compiled_prio_report, language=None)
+        
+        # Global cleaning dashboard bar
+        st.markdown(" ")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
+                eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
+                save_db(eod_df, EOD_FILE)
+                st.rerun()
+        with col_c2:
+            if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
+                prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
+                save_db(prio_df, PRIORITIES_FILE)
+                st.rerun()
 
     # --- TAB 3: DATA CREATION FORMS ---
     with tab_add:
@@ -250,14 +304,13 @@ with left_panel:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
-                new_url = st.text_input("Task URL Link (Optional - e.g. Google Sheet Link)")
+                new_url = st.text_input("Task URL Link (Optional)")
                 new_freq = st.selectbox("Interval", ["Daily", "Weekly", "Monthly"])
                 start_date = st.date_input("Routine Start Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
                 
                 if submitted and new_name:
                     new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    
                     new_row = {
                         "task_id": new_id,
                         "task_name": new_name,
@@ -427,5 +480,4 @@ with right_panel:
         "height": "auto"
     }
     
-    # Render calendar
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
