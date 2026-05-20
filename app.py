@@ -221,7 +221,6 @@ with left_panel:
                         df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                         save_db(df, DB_FILE)
                         
-                        # FIXED: Restored complete, fully enclosed parenthesis structure for the auto-EOD logger line
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                         new_log_row = {"log_id": new_log_id, "bullet_text": f"Completed routine task: {row['task_name']}"}
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
@@ -456,7 +455,7 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                .rerun()
+                                st.rerun()  # FIXED: Restored prefix context to prevent script execution crashes
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
