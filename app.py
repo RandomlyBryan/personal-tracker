@@ -6,6 +6,7 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
+import streamlit.components.v1 as components  # Required for HTML/JS injection
 
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
@@ -29,7 +30,7 @@ st.markdown(
 DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
-PRIORITIES_FILE = "next_day_priorities.csv"
+PRIORITIES_FILE = "next_day_priorities.csv" 
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
@@ -41,7 +42,7 @@ if "editing_note_id" not in st.session_state:
 if "emails_sent_today" not in st.session_state:
     st.session_state.emails_sent_today = []
 
-# Load/Initialize Databases Safely
+# Load/Initialize Databases
 if not os.path.exists(DB_FILE):
     starter_data = {
         "task_id": [1, 2, 3],
@@ -59,10 +60,9 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    # Ensure column structure is current
     if "task_url" not in df.columns:
         df["task_url"] = ""
-    # FIXED: Clean and convert NaN values to standard strings to completely eliminate strip() errors
+        df.to_csv(DB_FILE, index=False)
     df["task_url"] = df["task_url"].fillna("").astype(str)
 
 if not os.path.exists(NOTES_FILE):
@@ -100,18 +100,14 @@ def parse_date_safely(date_str):
         except ValueError:
             return datetime.now().date()
 
-# Helper function to send automated background alert emails
 def send_email_notification(task_name, days_overdue, description, resource_url):
     try:
         secret_cfg = st.secrets["email"]
-        
         msg = MIMEMultipart()
         msg['From'] = secret_cfg["sender_email"]
         msg['To'] = secret_cfg["receiver_email"]
         msg['Subject'] = f"⏰ Routine Reminder: {task_name} is Overdue!"
-        
         link_line = f"🔗 Resource Link: {resource_url}\n" if resource_url and str(resource_url) != "nan" and str(resource_url).strip() != "" else ""
-        
         body = (
             f"Hello Bryan,\n\n"
             f"This is an automated alert from your Personal Tracker Dashboard.\n"
@@ -122,7 +118,6 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
             f"Access your live control panel to mark this complete: https://share.streamlit.io/"
         )
         msg.attach(MIMEText(body, 'plain'))
-        
         with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
             server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
             server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
@@ -139,6 +134,49 @@ st.markdown("---")
 
 today = datetime.now().date()
 tomorrow = today + timedelta(days=1)
+
+# --- NEW EXTENSION: CALCULATE OVERDUE TASKS FOR PUSH ALERTS ---
+overdue_tasks_list = []
+for _, row in df.iterrows():
+    last_comp_date = parse_date_safely(row['last_completed'])
+    if (today - last_comp_date).days >= get_days_interval(row['frequency']):
+        overdue_tasks_list.append(row['task_name'])
+
+# If overdue items exist, render hidden script to request permission and push notification card
+if overdue_tasks_list:
+    alert_summary = f"You have {len(overdue_tasks_list)} items requiring update: " + ", ".join(overdue_tasks_list[:2])
+    if len(overdue_tasks_list) > 2:
+        alert_summary += f" and {len(overdue_tasks_list) - 2} more."
+
+    # JavaScript Engine wrapped cleanly inside an invisible 0-pixel container component
+    js_notification_code = f"""
+    <script>
+    function triggerDesktopPush() {{
+        if (!("Notification" in window)) {{
+            console.log("Browser does not support notifications.");
+            return;
+        }}
+        if (Notification.permission === "granted") {{
+            new Notification("⏰ Overdue Routines Alert", {{
+                body: "{alert_summary}",
+                icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png"
+            }});
+        }} else if (Notification.permission !== "denied") {{
+            Notification.requestPermission().then(function (permission) {{
+                if (permission === "granted") {{
+                    new Notification("⏰ Overdue Routines Alert", {{
+                        body: "{alert_summary}",
+                        icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png"
+                    }});
+                }}
+            }});
+        }}
+    }}
+    // Run notification trigger sequence as soon as document initializes
+    setTimeout(triggerDesktopPush, 1000);
+    </script>
+    """
+    components.html(js_notification_code, height=0, width=0)
 
 # Side-by-side split layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
@@ -198,7 +236,7 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER WITH NEXT DAY PRIORITIES ---
     with tab_eod:
-        st.subheader("Daily Completed Task Tracker")
+        st.subheader("Daily Task Report")
         
         st.markdown("**📋 Quick Copy**")
         st.code("Bryan Reyes", language=None)
@@ -213,7 +251,7 @@ with left_panel:
             st.markdown("**Add Completed Tasks:**")
             with st.form("eod_add_form", clear_on_submit=True):
                 log_input = st.text_input("Item finished today:", key="eod_in")
-                add_bullet = st.form_submit_button("Log Work")
+                add_bullet = st.form_submit_button("Add")
                 if add_bullet and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                     new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
@@ -222,10 +260,10 @@ with left_panel:
                     st.rerun()
                     
         with prio_log_col:
-            st.markdown("**Add Manual Tomorrow Priorities:**")
+            st.markdown("**Next Day Task Priorities:**")
             with st.form("prio_add_form", clear_on_submit=True):
                 prio_input = st.text_input("Item for tomorrow:", key="prio_in")
-                add_prio = st.form_submit_button("Stage Priority")
+                add_prio = st.form_submit_button("Add")
                 if add_prio and prio_input:
                     new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
                     new_prio_row = {"prio_id": new_prio_id, "item_text": prio_input.strip()}
@@ -246,7 +284,7 @@ with left_panel:
         else:
             compiled_report = f"{emp_header}• (No work logged yet today.)"
             
-        st.markdown("**Your Compiled EOD Summary Output:**")
+        st.markdown("**EOD Summary:**")
         st.code(compiled_report, language=None)
         
         auto_priorities = []
@@ -273,18 +311,18 @@ with left_panel:
         else:
             compiled_prio_report = prio_header + "• No priorities scheduled for tomorrow."
             
-        st.markdown("**Your Compiled Next Day Priorities Output:**")
+        st.markdown("**Next Day Priorities:**")
         st.code(compiled_prio_report, language=None)
         
         st.markdown(" ")
-        col_c1, col_c2 = st.columns(2)
-        with col_c1:
-            if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
+        col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
+        with col_clear_w:
+            if not eod_df.empty && st.button("🗑️ Clear Logged Work", use_container_width=True):
                 eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
                 save_db(eod_df, EOD_FILE)
                 st.rerun()
-        with col_c2:
-            if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
+        with col_clear_p:
+            if not prio_df.empty && st.button("🗑️ Clear Staged Priorities", use_container_width=True):
                 prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
@@ -349,7 +387,6 @@ with left_panel:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
                         edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
-                        # FIXED: Ensured fallback logic checks for NaN safety reactively during text field rendering
                         current_url_raw = row.get('task_url', '')
                         edit_url_val = str(current_url_raw) if pd.notna(current_url_raw) else ""
                         edit_url = st.text_input("URL Link", value=edit_url_val, key=f"eurl_{row['task_id']}")
