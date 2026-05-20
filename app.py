@@ -144,7 +144,7 @@ with left_panel:
     
     # --- TAB 1: URGENT ALERTS ---
     with tab_alerts:
-        st.subheader("Items Due For Update")
+        st.subheader("Task For Update")
         reminders_found = False
         
         for index, row in df.iterrows():
