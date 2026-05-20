@@ -29,7 +29,7 @@ st.markdown(
 DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
-PRIORITIES_FILE = "next_day_priorities.csv"  # NEW: Persistent storage for staging tomorrow's manual targets
+PRIORITIES_FILE = "next_day_priorities.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
@@ -41,7 +41,7 @@ if "editing_note_id" not in st.session_state:
 if "emails_sent_today" not in st.session_state:
     st.session_state.emails_sent_today = []
 
-# Load/Initialize Databases
+# Load/Initialize Databases Safely
 if not os.path.exists(DB_FILE):
     starter_data = {
         "task_id": [1, 2, 3],
@@ -59,9 +59,11 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
+    # Ensure column structure is current
     if "task_url" not in df.columns:
         df["task_url"] = ""
-        df.to_csv(DB_FILE, index=False)
+    # FIXED: Clean and convert NaN values to standard strings to completely eliminate strip() errors
+    df["task_url"] = df["task_url"].fillna("").astype(str)
 
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
@@ -75,7 +77,6 @@ if not os.path.exists(EOD_FILE):
 else:
     eod_df = pd.read_csv(EOD_FILE)
 
-# Load/Initialize Next Day Priorities storage
 if not os.path.exists(PRIORITIES_FILE):
     prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
     prio_df.to_csv(PRIORITIES_FILE, index=False)
@@ -197,7 +198,7 @@ with left_panel:
             
     # --- TAB 2: EOD REPORT LOG BUILDER WITH NEXT DAY PRIORITIES ---
     with tab_eod:
-        st.subheader("Daily Task Report")
+        st.subheader("Daily Completed Task Tracker")
         
         st.markdown("**📋 Quick Copy**")
         st.code("Bryan Reyes", language=None)
@@ -206,14 +207,13 @@ with left_panel:
         
         st.markdown("---")
         
-        # Dual-input layout for both logging accomplishments or staging priorities
         eod_log_col, prio_log_col = st.columns(2)
         
         with eod_log_col:
             st.markdown("**Add Completed Tasks:**")
             with st.form("eod_add_form", clear_on_submit=True):
                 log_input = st.text_input("Item finished today:", key="eod_in")
-                add_bullet = st.form_submit_button("Add")
+                add_bullet = st.form_submit_button("Log Work")
                 if add_bullet and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                     new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
@@ -222,10 +222,10 @@ with left_panel:
                     st.rerun()
                     
         with prio_log_col:
-            st.markdown("**Next Day Task Priorities:**")
+            st.markdown("**Add Manual Tomorrow Priorities:**")
             with st.form("prio_add_form", clear_on_submit=True):
                 prio_input = st.text_input("Item for tomorrow:", key="prio_in")
-                add_prio = st.form_submit_button("Add")
+                add_prio = st.form_submit_button("Stage Priority")
                 if add_prio and prio_input:
                     new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
                     new_prio_row = {"prio_id": new_prio_id, "item_text": prio_input.strip()}
@@ -235,7 +235,6 @@ with left_panel:
 
         st.markdown("---")
 
-        # 1. Build Accomplishments segment
         emp_header = (
             f"Date: {today.strftime(DATE_FORMAT)}\n"
             f"----------------------------------------\n"
@@ -247,26 +246,21 @@ with left_panel:
         else:
             compiled_report = f"{emp_header}• (No work logged yet today.)"
             
-        st.markdown("**EOD Summary:**")
+        st.markdown("**Your Compiled EOD Summary Output:**")
         st.code(compiled_report, language=None)
         
-        # 2. AUTOMATION: Build the Next Day Priorities segment dynamically
         auto_priorities = []
-        
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row['last_completed'])
             d_since = (today - l_completed).days
             i_window = get_days_interval(row['frequency'])
             n_due = l_completed + timedelta(days=i_window)
             
-            # Condition A: Rollover any tasks currently uncompleted/overdue today
             if d_since >= i_window:
                 auto_priorities.append(f"• [ROLLOVER] {row['task_name']} (Overdue)")
-            # Condition B: Snag any tasks coming due exactly tomorrow
             elif n_due == tomorrow:
                 auto_priorities.append(f"• [SCHEDULED] {row['task_name']} (Due Tomorrow)")
                 
-        # Condition C: Append your custom manually typed priorities
         for _, row in prio_df.iterrows():
             auto_priorities.append(f"• {row['item_text']}")
             
@@ -279,10 +273,9 @@ with left_panel:
         else:
             compiled_prio_report = prio_header + "• No priorities scheduled for tomorrow."
             
-        st.markdown("**Next Day Priorities:**")
+        st.markdown("**Your Compiled Next Day Priorities Output:**")
         st.code(compiled_prio_report, language=None)
         
-        # Global cleaning dashboard bar
         st.markdown(" ")
         col_c1, col_c2 = st.columns(2)
         with col_c1:
@@ -356,7 +349,10 @@ with left_panel:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
                         edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
-                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '') if pd.notna(row.get('task_url', '')) else ''), key=f"eurl_{row['task_id']}")
+                        # FIXED: Ensured fallback logic checks for NaN safety reactively during text field rendering
+                        current_url_raw = row.get('task_url', '')
+                        edit_url_val = str(current_url_raw) if pd.notna(current_url_raw) else ""
+                        edit_url = st.text_input("URL Link", value=edit_url_val, key=f"eurl_{row['task_id']}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
