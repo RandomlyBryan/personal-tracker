@@ -46,7 +46,7 @@ if not os.path.exists(DB_FILE):
         "task_id": [1, 2, 3],
         "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
-        "task_url": ["", "", ""],  # NEW: URL storage column in recurring engine
+        "task_url": ["", "", ""],
         "frequency": ["Daily", "Weekly", "Monthly"],
         "last_completed": [
             (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
@@ -58,7 +58,6 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    # Upgrade structural safety check: ensure task_url column exists in existing files
     if "task_url" not in df.columns:
         df["task_url"] = ""
 
@@ -91,7 +90,7 @@ def parse_date_safely(date_str):
         except ValueError:
             return datetime.now().date()
 
-# Perfectly centered main screen title
+# Centered main screen title
 st.markdown(
     "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
@@ -128,9 +127,8 @@ with left_panel:
                     st.warning(f"**{row['task_name']}** ({row['frequency']})")
                     with st.expander("📄 View Details & Resources"):
                         st.write(row['task_description'])
-                        # NEW: Display link if one exists
                         task_link = str(row.get('task_url', '')).strip()
-                        if task_link and task_link != "nan":
+                        if task_link and task_link != "nan" and task_link != "":
                             st.link_button("🔗 Open Direct Link", url=task_link, use_container_width=True)
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
@@ -209,7 +207,6 @@ with left_panel:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
-                # NEW: Added URL input block inside creation form space
                 new_url = st.text_input("Task URL Link (Optional - e.g. Google Sheet Link)")
                 new_freq = st.selectbox("Interval", ["Daily", "Weekly", "Monthly"])
                 start_date = st.date_input("Routine Start Date", value=today)
@@ -222,7 +219,7 @@ with left_panel:
                         "task_id": new_id,
                         "task_name": new_name,
                         "task_description": new_desc if new_desc else "No instructions.",
-                        "task_url": new_url.strip(),  # Save URL line to database
+                        "task_url": new_url.strip(),
                         "frequency": new_freq,
                         "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)
                     }
@@ -262,51 +259,4 @@ with left_panel:
                 if st.session_state.editing_task_id == row['task_id']:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
-                        edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
-                        # NEW: Added inline editing input line for the URL element
-                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '') if pd.notna(row.get('task_url', '')) else ''), key=f"eurl_{row['task_id']}")
-                    with ec2:
-                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
-                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
-                    with ec3:
-                        if st.button("💾", key=f"s_{row['task_id']}"):
-                            df.at[index, 'task_name'] = edit_name
-                            df.at[index, 'task_description'] = edit_desc
-                            df.at[index, 'task_url'] = edit_url.strip()
-                            df.at[index, 'frequency'] = edit_freq
-                            df.at[index, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
-                            save_db(df, DB_FILE)
-                            st.session_state.editing_task_id = None
-                            st.rerun()
-                else:
-                    with ec1:
-                        st.write(f"**{row['task_name']}** ({row['frequency']})")
-                        st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
-                        current_url_val = str(row.get('task_url', '')).strip()
-                        if current_url_val and current_url_val != "nan" and current_url_val != "":
-                            st.caption(f"🔗 Link: {current_url_val}")
-                    with ec2:
-                        if st.button("✏️", key=f"em_{row['task_id']}"):
-                            st.session_state.editing_task_id = row['task_id']
-                            st.rerun()
-                    with ec3:
-                        if st.button("🗑️", key=f"d_{row['task_id']}"):
-                            df = df[df['task_id'] != row['task_id']]
-                            save_db(df, DB_FILE)
-                            st.rerun()
-                st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
-
-        with m_note:
-            if notes_df.empty:
-                st.info("No temporary calendar notes pinned.")
-            else:
-                for index, row in notes_df.iterrows():
-                    nc1, nc2, nc3 = st.columns([3, 1, 1])
-                    
-                    if st.session_state.editing_note_id == row['note_id']:
-                        current_note_date = parse_date_safely(row['event_date'])
-                        with nc1:
-                            edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
-                            edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
-                        with nc2:
-                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date
+                        edit_desc = st.text_area
