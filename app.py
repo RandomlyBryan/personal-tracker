@@ -122,7 +122,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
         link_line = f"🔗 Resource Link: {resource_url}\n" if resource_url and str(resource_url) != "nan" and str(resource_url).strip() != "" else ""
         body = (
             f"Hello Bryan,\n\n"
-            f"This is an automated alert from your Personal Tracker Dashboard.\n"
+            f"This is an automated alert from your Personal Tracker Command Center.\n"
             f"The following routine requires an update:\n\n"
             f"📌 Task: {task_name} ({days_overdue} days since last update)\n"
             f"📝 Instructions:\n{description}\n"
@@ -139,7 +139,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
 
 # Centered main screen title
 st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>📈 Dashboardrd 📈</h1>", 
     unsafe_allow_html=True
 )
 st.markdown("---")
