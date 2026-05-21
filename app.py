@@ -139,7 +139,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
 
 # Centered main screen title
 st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>📈 Dashboardrd 📈</h1>", 
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>📈 Dashboard 📈</h1>", 
     unsafe_allow_html=True
 )
 st.markdown("---")
