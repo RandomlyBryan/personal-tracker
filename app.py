@@ -70,17 +70,24 @@ else:
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
 
+# FIXED STRUCTURE: Ensure EOD database tracks both titles and notes independently for grouping operations
+if not os.path.exists(EOD_FILE):
+    eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text"])
+    eod_df.to_csv(EOD_FILE, index=False)
+else:
+    eod_df = pd.read_csv(EOD_FILE)
+    if "task_title" not in eod_df.columns:
+        # Backward compatibility patch for older entries
+        eod_df["task_title"] = "Manual Log"
+        eod_df.to_csv(EOD_FILE, index=False)
+    eod_df["task_title"] = eod_df["task_title"].fillna("Manual Log").astype(str)
+    eod_df["bullet_text"] = eod_df["bullet_text"].fillna("").astype(str)
+
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
     notes_df.to_csv(NOTES_FILE, index=False)
 else:
     notes_df = pd.read_csv(NOTES_FILE)
-
-if not os.path.exists(EOD_FILE):
-    eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
-    eod_df.to_csv(EOD_FILE, index=False)
-else:
-    eod_df = pd.read_csv(EOD_FILE)
 
 if not os.path.exists(PRIORITIES_FILE):
     prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
@@ -223,14 +230,16 @@ with left_panel:
                             
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
-                        # UPGRADE: Fetch detail string context dynamically for deeper reporting
                         raw_desc = str(row['task_description']).strip()
-                        clean_desc = f" - {raw_desc}" if raw_desc and raw_desc != "nan" and raw_desc != "No instructions." else ""
-                        full_eod_text = f"Completed task: {row['task_name']}{clean_desc}"
+                        clean_desc = raw_desc if raw_desc and raw_desc != "nan" and raw_desc != "No instructions." else "Completed successfully."
                         
-                        # Log detailed accomplishment to EOD list
+                        # FIXED SAVE LOGIC: Log title and details into separate data column paths for perfect grouping metrics
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                        new_log_row = {"log_id": new_log_id, "bullet_text": full_eod_text}
+                        new_log_row = {
+                            "log_id": new_log_id, 
+                            "task_title": str(row['task_name']).strip(), 
+                            "bullet_text": clean_desc
+                        }
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_db(eod_df, EOD_FILE)
                         
@@ -249,7 +258,7 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER WITH NEXT DAY PRIORITIES ---
+    # --- TAB 2: EOD REPORT LOG BUILDER WITH SMART TITLES GROUPING ---
     with tab_eod:
         st.subheader("Daily Task Report")
         
@@ -265,11 +274,17 @@ with left_panel:
         with eod_log_col:
             st.markdown("**Add Completed Tasks:**")
             with st.form("eod_add_form", clear_on_submit=True):
-                log_input = st.text_input("Item finished today:", key="eod_in")
+                # FIXED INPUTS: Allow manual logs to supply both custom structural titles and notes
+                manual_title = st.text_input("Project / Task Title:", value="Manual Log")
+                log_input = st.text_input("Action Detail / Note:")
                 add_bullet = st.form_submit_button("Add")
                 if add_bullet and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                    new_log_row = {"log_id": new_log_id, "bullet_text": log_input.strip()}
+                    new_log_row = {
+                        "log_id": new_log_id, 
+                        "task_title": manual_title.strip() if manual_title.strip() else "Manual Log", 
+                        "bullet_text": log_input.strip()
+                    }
                     eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                     save_db(eod_df, EOD_FILE)
                     st.rerun()
@@ -288,20 +303,44 @@ with left_panel:
 
         st.markdown("---")
 
+        # FIXED ENGINE: Process, sort, and roll up multiple notes under a single shared title match beautifully
         emp_header = (
             f"Date: {today.strftime(DATE_FORMAT)}\n"
             f"----------------------------------------\n"
             f"Completed Tasks & Actions Log:\n"
         )
+        
         if not eod_df.empty:
-            bullet_lines = "\n".join([f"• {row['bullet_text']}" for _, row in eod_df.iterrows()])
-            compiled_report = f"{emp_header}{bullet_lines}"
+            grouped_lines = []
+            
+            # Using a dictionary to track unique titles while maintaining order of completion
+            seen_titles = {}
+            for _, row in eod_df.iterrows():
+                title = row['task_title']
+                note = row['bullet_text']
+                if title not in seen_titles:
+                    seen_titles[title] = []
+                seen_titles[title].append(note)
+            
+            # Generate the rolled up layout block text
+            for title, notes in seen_titles.items():
+                if title == "Manual Log":
+                    # Keep manual individual single entries clean
+                    for note in notes:
+                        grouped_lines.append(f"• {note}")
+                else:
+                    grouped_lines.append(f"• {title}:")
+                    for note in notes:
+                        grouped_lines.append(f"  - {note}")
+                        
+            compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else:
             compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary:**")
         st.code(compiled_report, language=None)
         
+        # 2. Build Next Day Priorities block
         auto_priorities = []
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row['last_completed'])
@@ -333,7 +372,7 @@ with left_panel:
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
         with col_clear_w:
             if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
-                eod_df = pd.DataFrame(columns=["log_id", "bullet_text"])
+                eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text"])
                 save_db(eod_df, EOD_FILE)
                 st.rerun()
         with col_clear_p:
