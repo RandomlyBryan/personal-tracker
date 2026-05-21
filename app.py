@@ -50,7 +50,7 @@ if not os.path.exists(DB_FILE):
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
         "task_url": ["", "", ""],
         "frequency": ["Daily", "Weekly", "Monthly"],
-        "is_recurring": ["Yes", "Yes", "Yes"],  # NEW: Structural column for recurrence classification
+        "is_recurring": ["Yes", "Yes", "Yes"],
         "last_completed": [
             (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
             (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), 
@@ -64,7 +64,6 @@ else:
     if "task_url" not in df.columns:
         df["task_url"] = ""
         df.to_csv(DB_FILE, index=False)
-    # SAFETY NET MIGRATION: Auto-patches existing backup data to ensure compliance with recurrence filters
     if "is_recurring" not in df.columns:
         df["is_recurring"] = "Yes"
         df.to_csv(DB_FILE, index=False)
@@ -198,7 +197,6 @@ with left_panel:
         st.subheader("Items Due For Update")
         reminders_found = False
         
-        # Copy df for iterating to safely allow inline dropping of non-recurring rows
         for index, row in df.copy().iterrows():
             last_comp_date = parse_date_safely(row['last_completed'])
             days_since = (today - last_comp_date).days
@@ -225,13 +223,18 @@ with left_panel:
                             
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
-                        # Log accomplishment to EOD list
+                        # UPGRADE: Fetch detail string context dynamically for deeper reporting
+                        raw_desc = str(row['task_description']).strip()
+                        clean_desc = f" - {raw_desc}" if raw_desc and raw_desc != "nan" and raw_desc != "No instructions." else ""
+                        full_eod_text = f"Completed task: {row['task_name']}{clean_desc}"
+                        
+                        # Log detailed accomplishment to EOD list
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                        new_log_row = {"log_id": new_log_id, "bullet_text": f"Completed task: {row['task_name']}"}
+                        new_log_row = {"log_id": new_log_id, "bullet_text": full_eod_text}
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_db(eod_df, EOD_FILE)
                         
-                        # UPGRADE CONDITIONAL: If one-time, drop from sheet permanently; otherwise advance the due timeline
+                        # Handle One-Time vs Recurring logic
                         if str(row.get('is_recurring', 'Yes')) == "No":
                             df = df[df['task_id'] != row['task_id']]
                         else:
@@ -349,7 +352,6 @@ with left_panel:
                 new_desc = st.text_area("Instructions")
                 new_url = st.text_input("Task URL Link (Optional)")
                 
-                # UPGRADE INTERFACE: Split input selectors for setting time cycle vs lifetime mode
                 col_f1, col_f2 = st.columns(2)
                 with col_f1:
                     new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
@@ -412,7 +414,6 @@ with left_panel:
                         edit_url = st.text_input("URL Link", value=edit_url_val, key=f"eurl_{row['task_id']}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
-                        # UPGRADE EDIT INPUT: Added recurrence adjustment selector in active edit blocks
                         current_rec_val = str(row.get('is_recurring', 'Yes'))
                         edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(current_rec_val if current_rec_val in ["Yes", "No"] else "Yes"), key=f"erec_{row['task_id']}")
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
@@ -505,7 +506,6 @@ with right_panel:
         is_overdue = today >= next_due
         event_color = "#FF4B4B" if is_overdue else "#1C83E1"
         
-        # Clarify visual title on monthly view
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
