@@ -50,6 +50,7 @@ if not os.path.exists(DB_FILE):
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
         "task_url": ["", "", ""],
         "frequency": ["Daily", "Weekly", "Monthly"],
+        "is_recurring": ["Yes", "Yes", "Yes"],  # NEW: Structural column for recurrence classification
         "last_completed": [
             (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
             (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), 
@@ -63,8 +64,12 @@ else:
     if "task_url" not in df.columns:
         df["task_url"] = ""
         df.to_csv(DB_FILE, index=False)
-    # Ensure NaN data spaces are filled cleanly as text to protect edit tasks
+    # SAFETY NET MIGRATION: Auto-patches existing backup data to ensure compliance with recurrence filters
+    if "is_recurring" not in df.columns:
+        df["is_recurring"] = "Yes"
+        df.to_csv(DB_FILE, index=False)
     df["task_url"] = df["task_url"].fillna("").astype(str)
+    df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
 
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
@@ -193,7 +198,8 @@ with left_panel:
         st.subheader("Items Due For Update")
         reminders_found = False
         
-        for index, row in df.iterrows():
+        # Copy df for iterating to safely allow inline dropping of non-recurring rows
+        for index, row in df.copy().iterrows():
             last_comp_date = parse_date_safely(row['last_completed'])
             days_since = (today - last_comp_date).days
             needed_days = get_days_interval(row['frequency'])
@@ -202,7 +208,8 @@ with left_panel:
                 reminders_found = True
                 col_text, col_btn = st.columns([3, 1])
                 with col_text:
-                    st.warning(f"**{row['task_name']}** ({row['frequency']})")
+                    type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
+                    st.warning(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
                     with st.expander("📄 View Details & Resources"):
                         st.write(row['task_description'])
                         task_link = str(row.get('task_url', '')).strip()
@@ -218,13 +225,19 @@ with left_panel:
                             
                 with col_btn:
                     if st.button("Done", key=f"remind_btn_{row['task_id']}"):
-                        df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
-                        save_db(df, DB_FILE)
-                        
+                        # Log accomplishment to EOD list
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                        new_log_row = {"log_id": new_log_id, "bullet_text": f"Completed routine task: {row['task_name']}"}
+                        new_log_row = {"log_id": new_log_id, "bullet_text": f"Completed task: {row['task_name']}"}
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_db(eod_df, EOD_FILE)
+                        
+                        # UPGRADE CONDITIONAL: If one-time, drop from sheet permanently; otherwise advance the due timeline
+                        if str(row.get('is_recurring', 'Yes')) == "No":
+                            df = df[df['task_id'] != row['task_id']]
+                        else:
+                            df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
+                        
+                        save_db(df, DB_FILE)
                         
                         if row['task_id'] in st.session_state.emails_sent_today:
                             st.session_state.emails_sent_today.remove(row['task_id'])
@@ -335,7 +348,14 @@ with left_panel:
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
                 new_url = st.text_input("Task URL Link (Optional)")
-                new_freq = st.selectbox("Interval", ["Daily", "Weekly", "Monthly"])
+                
+                # UPGRADE INTERFACE: Split input selectors for setting time cycle vs lifetime mode
+                col_f1, col_f2 = st.columns(2)
+                with col_f1:
+                    new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
+                with col_f2:
+                    recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"], help="Select 'No' if this task should vanish forever once marked Done.")
+                
                 start_date = st.date_input("Routine Start Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
                 
@@ -347,6 +367,7 @@ with left_panel:
                         "task_description": new_desc if new_desc else "No instructions.",
                         "task_url": new_url.strip(),
                         "frequency": new_freq,
+                        "is_recurring": recurrence_setting,
                         "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)
                     }
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
@@ -391,6 +412,9 @@ with left_panel:
                         edit_url = st.text_input("URL Link", value=edit_url_val, key=f"eurl_{row['task_id']}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
+                        # UPGRADE EDIT INPUT: Added recurrence adjustment selector in active edit blocks
+                        current_rec_val = str(row.get('is_recurring', 'Yes'))
+                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(current_rec_val if current_rec_val in ["Yes", "No"] else "Yes"), key=f"erec_{row['task_id']}")
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
                     with ec3:
                         if st.button("💾", key=f"s_{row['task_id']}"):
@@ -398,13 +422,15 @@ with left_panel:
                             df.at[index, 'task_description'] = edit_desc
                             df.at[index, 'task_url'] = edit_url.strip()
                             df.at[index, 'frequency'] = edit_freq
+                            df.at[index, 'is_recurring'] = edit_rec
                             df.at[index, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
                             save_db(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
                 else:
                     with ec1:
-                        st.write(f"**{row['task_name']}** ({row['frequency']})")
+                        rec_txt = "One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "Recurring"
+                        st.write(f"**{row['task_name']}** ({row['frequency']} — *{rec_txt}*)")
                         st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
                         current_url_val = str(row.get('task_url', '')).strip()
                         if current_url_val and current_url_val != "nan" and current_url_val != "":
@@ -455,7 +481,7 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                st.rerun()  # FIXED: Restored prefix context to prevent script execution crashes
+                                st.rerun()
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
@@ -479,8 +505,10 @@ with right_panel:
         is_overdue = today >= next_due
         event_color = "#FF4B4B" if is_overdue else "#1C83E1"
         
+        # Clarify visual title on monthly view
+        prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         calendar_events.append({
-            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"🔄 {row['task_name']}",
+            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
             "start": next_due.strftime(STORAGE_DATE_FORMAT),
             "end": next_due.strftime(STORAGE_DATE_FORMAT),
             "backgroundColor": event_color,
