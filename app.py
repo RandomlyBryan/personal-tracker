@@ -78,7 +78,7 @@ else:
     eod_df = pd.read_csv(EOD_FILE)
     if "task_title" not in eod_df.columns:
         # Backward compatibility patch for older entries
-        eod_df["task_title"] = ""
+        eod_df["task_title"] = "Manual Log"
         eod_df.to_csv(EOD_FILE, index=False)
     eod_df["task_title"] = eod_df["task_title"].fillna("Manual Log").astype(str)
     eod_df["bullet_text"] = eod_df["bullet_text"].fillna("").astype(str)
