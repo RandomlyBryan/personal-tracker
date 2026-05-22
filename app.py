@@ -190,7 +190,7 @@ if not os.path.exists(ARCHIVE_FILE):
     archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
     archive_df.to_csv(ARCHIVE_FILE, index=False)
 else:
-    archive_df = pd.read_csv(ARCHIVE_FILE)
+    archive_df = pd.read_csv(archive_df)
     archive_df["log_date"] = archive_df["log_date"].fillna(datetime.now().strftime(STORAGE_DATE_FORMAT)).astype(str)
 
 if not os.path.exists(NOTES_FILE):
@@ -317,7 +317,7 @@ with left_panel:
             
             if days_since >= needed_days:
                 reminders_found = True
-                col_text, col_action = st.columns([1.8, 1.2])
+                col_text, col_action = st.columns([1.6, 1.4])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.write(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
@@ -334,29 +334,33 @@ with left_panel:
                             st.session_state.emails_sent_today.append(row['task_id'])
                 
                 with col_action:
-                    result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found, etc.", key=f"res_{row['task_id']}")
-                    if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
-                        clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
-                        
-                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                        new_log_row = {
-                            "log_id": new_log_id, 
-                            "task_title": str(row['task_name']).strip(), 
-                            "bullet_text": clean_notes,
-                            "log_date": today.strftime(STORAGE_DATE_FORMAT)
-                        }
-                        eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
-                        save_db(eod_df, EOD_FILE)
-                        
-                        if str(row.get('is_recurring', 'Yes')) == "No":
-                            df = df[df['task_id'] != row['task_id']]
-                        else:
-                            df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
-                        
-                        save_db(df, DB_FILE)
-                        if row['task_id'] in st.session_state.emails_sent_today:
-                            st.session_state.emails_sent_today.remove(row['task_id'])
-                        st.rerun()
+                    # FIXED ALIGNMENT: Sub-divided input and trigger layout with bottom alignment formatting applied
+                    col_input, col_btn = st.columns([1.8, 1.2], vertical_alignment="bottom")
+                    with col_input:
+                        result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
+                    with col_btn:
+                        if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
+                            clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
+                            
+                            new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                            new_log_row = {
+                                "log_id": new_log_id, 
+                                "task_title": str(row['task_name']).strip(), 
+                                "bullet_text": clean_notes,
+                                "log_date": today.strftime(STORAGE_DATE_FORMAT)
+                            }
+                            eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                            save_db(eod_df, EOD_FILE)
+                            
+                            if str(row.get('is_recurring', 'Yes')) == "No":
+                                df = df[df['task_id'] != row['task_id']]
+                            else:
+                                df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
+                            
+                            save_db(df, DB_FILE)
+                            if row['task_id'] in st.session_state.emails_sent_today:
+                                st.session_state.emails_sent_today.remove(row['task_id'])
+                            st.rerun()
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
                         
         if not reminders_found:
@@ -686,7 +690,6 @@ with right_panel:
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
         
-        # Color profile: Overdue warnings stay Red, standard tasks match our sleek dark palette
         event_color = "#EF4444" if is_overdue else "#1E3A8A"
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         
@@ -700,7 +703,7 @@ with right_panel:
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
             "title": f"📌 {row['title']}", "start": n_date, "end": n_date,
-            "backgroundColor": "#334155", # Pinned calendar events display in clean slate borders
+            "backgroundColor": "#334155", 
             "borderColor": "#334155", 
             "allDay": True
         })
