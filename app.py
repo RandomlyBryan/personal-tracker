@@ -208,7 +208,7 @@ with left_panel:
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs([
         "🚨 Pending Tasks", 
         "📝 EOD Report", 
-        "📊 Archive Viewer", 
+        "📊 Task History", 
         "➕ New Task", 
         "⚙️ Existing Task"
     ])
@@ -392,7 +392,7 @@ with left_panel:
 
     # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN WITH DROPDOWN MIGRATION ---
     with tab_archive:
-        st.subheader("📊 Completed Work History Archive")
+        st.subheader("📊 Completed Task History")
         st.write("Browse through your complete historical logs by selecting a time window from the dropdown selection:")
         
         # UPGRADE: Swapped the wide st.radio buttons layout out for a tight, space-saving dropdown selectbox 
