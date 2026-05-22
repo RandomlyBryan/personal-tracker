@@ -31,7 +31,7 @@ DB_FILE = "tasks_db.csv"
 NOTES_FILE = "calendar_notes.csv"
 EOD_FILE = "eod_temp_logs.csv"
 PRIORITIES_FILE = "next_day_priorities.csv" 
-ARCHIVE_FILE = "eod_master_archive.csv"  # NEW: Permanent historic master ledger storage
+ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
@@ -78,14 +78,12 @@ else:
     eod_df = pd.read_csv(EOD_FILE)
     if "task_title" not in eod_df.columns:
         eod_df["task_title"] = "Manual Log"
-    # NEW STRUCTURE: Ensure staging logs always capture execution timestamps
     if "log_date" not in eod_df.columns:
         eod_df["log_date"] = datetime.now().strftime(STORAGE_DATE_FORMAT)
     eod_df.to_csv(EOD_FILE, index=False)
     eod_df["task_title"] = eod_df["task_title"].fillna("Manual Log").astype(str)
     eod_df["bullet_text"] = eod_df["bullet_text"].fillna("").astype(str)
 
-# NEW: Build permanent Master Archive file if missing
 if not os.path.exists(ARCHIVE_FILE):
     archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
     archive_df.to_csv(ARCHIVE_FILE, index=False)
@@ -207,7 +205,6 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 with left_panel:
     st.header("📋 Command Center")
     
-    # NEW TAB ADDED: "📊 Archive Viewer" integrated smoothly into your panel menu
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs([
         "🚨 Pending Tasks", 
         "📝 EOD Report", 
@@ -255,12 +252,11 @@ with left_panel:
                             "log_id": new_log_id, 
                             "task_title": str(row['task_name']).strip(), 
                             "bullet_text": clean_desc,
-                            "log_date": today.strftime(STORAGE_DATE_FORMAT)  # Track execution date
+                            "log_date": today.strftime(STORAGE_DATE_FORMAT)
                         }
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_db(eod_df, EOD_FILE)
                         
-                        # Handle One-Time vs Recurring logic
                         if str(row.get('is_recurring', 'Yes')) == "No":
                             df = df[df['task_id'] != row['task_id']]
                         else:
@@ -381,11 +377,9 @@ with left_panel:
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
         with col_clear_w:
             if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
-                # UPGRADE ARCHIVE TRIGGER: Before wiping the daily workspace tracker, write it permanently to master archive records
                 archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
                 save_db(archive_df, ARCHIVE_FILE)
                 
-                # Now wipe out temp stager file cleanly
                 eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
                 save_db(eod_df, EOD_FILE)
                 st.success("🔒 Staged rows permanently archived & workspace reset!")
@@ -396,19 +390,18 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- NEW TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         st.write("Browse through your complete historical logs by selecting a quick filter range or setting a manual calendar span below:")
         
-        # Interactive Filter Form Controllers
         range_selection = st.radio("Select View Frame:", ["All Logs", "This Week", "This Month", "Custom Date Range"], horizontal=True)
         
         filter_start = today
         filter_end = today
         
         if range_selection == "This Week":
-            filter_start = today - timedelta(days=today.weekday())  # Current Monday baseline
+            filter_start = today - timedelta(days=today.weekday())
             filter_end = filter_start + timedelta(days=6)
         elif range_selection == "This Month":
             filter_start = today.replace(day=1)
@@ -420,11 +413,9 @@ with left_panel:
             with col_date2:
                 filter_end = st.date_input("End Date Target:", value=today)
                 
-        # Build filtering mask array calculations safely
         if archive_df.empty:
-            st.info("Your master archive file is currently empty. Complete tasks and hit 'Clear Logged Work' to begin building history history records.")
+            st.info("Your master archive file is currently empty. Complete tasks and hit 'Clear Logged Work' to begin building history records.")
         else:
-            # Convert row text values to calculation dates on the fly
             archive_df['parsed_date'] = archive_df['log_date'].apply(parse_date_safely)
             
             if range_selection == "All Logs":
@@ -438,15 +429,10 @@ with left_panel:
             if filtered_archive.empty:
                 st.warning(f"No archived rows match selected window filter: ({filter_start.strftime(DATE_FORMAT)} to {filter_end.strftime(DATE_FORMAT)})")
             else:
-                # Group and display filtered historic timeline cleanly matching daily style layout
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} actions logged)")
-                
-                # Sort descending by date to see latest achievements first
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 
-                grouped_history = []
                 seen_history_blocks = {}
-                
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title = row['task_title']
@@ -460,7 +446,6 @@ with left_panel:
                         seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append(note)
                 
-                # Format rolled up presentation block string 
                 output_lines = []
                 for date_lbl, titles_dict in seen_history_blocks.items():
                     output_lines.append(date_lbl)
@@ -473,7 +458,7 @@ with left_panel:
                             output_lines.append(f"• {title}:")
                             for note in notes:
                                 output_lines.append(f"  - {note}")
-                    output_lines.append("\n") # Line spacing spacer
+                    output_lines.append("\n")
                     
                 st.code("\n".join(output_lines), language=None)
 
@@ -626,7 +611,7 @@ with left_panel:
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
 # ------------------------------------------
-# RIGHT PANEL: FLUID VISUAL CALENDAR
+# RIGHT PANEL: FLUID VISUAL CALENDAR WITH SMART HEIGHT RESPONSIVENESS
 # ------------------------------------------
 with right_panel:
     st.header("📅 Monthly Overview")
@@ -663,6 +648,7 @@ with right_panel:
             "allDay": True
         })
         
+    # FIXED CONFIGURATION: Implemented event limit filters to keep rows from overflowing day squares
     calendar_options = {
         "initialView": "dayGridMonth",
         "headerToolbar": {
@@ -672,7 +658,9 @@ with right_panel:
         },
         "editable": False,
         "selectable": True,
-        "height": "auto"
+        "height": "auto",
+        "dayMaxEvents": True,           # Automatically wraps extra rows into a clean text link block
+        "moreLinkClick": "popover"     # Shows a beautiful popover container when clicked
     }
     
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
