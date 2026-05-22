@@ -208,7 +208,7 @@ with left_panel:
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs([
         "🚨 Pending Tasks", 
         "📝 EOD Report", 
-        "📊 Archive Viewer", 
+        "📊 Completed Task History", 
         "➕ New Task", 
         "⚙️ Existing Task"
     ])
@@ -392,7 +392,7 @@ with left_panel:
 
     # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN ---
     with tab_archive:
-        st.subheader("📊 Completed Work History Archive")
+        st.subheader("📊 Completed Task Archive")
         st.write("Browse through your complete historical logs by selecting a quick filter range or setting a manual calendar span below:")
         
         range_selection = st.radio("Select View Frame:", ["All Logs", "This Week", "This Month", "Custom Date Range"], horizontal=True)
