@@ -11,15 +11,121 @@ import streamlit.components.v1 as components  # Required for HTML/JS injection
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
-# CUSTOM CSS: OVERRIDE ALL FONTS TO GEORGIA
+# CUSTOM CSS: JOKER THEMING ENGINE (PURPLE & GREEN DARK MODE)
 st.markdown(
     """
     <style>
+        /* Global Font & Background Overrides */
         html, body, [data-testid="stAppViewContainer"], .main, h1, h2, h3, h4, h5, h6, p, label, .stTabs button {
             font-family: 'Georgia', serif !important;
         }
         input, textarea, select {
             font-family: 'Georgia', serif !important;
+        }
+        
+        /* Main App Canvas Background */
+        [data-testid="stAppViewContainer"] {
+            background-color: #120E1A !important;
+        }
+        [data-testid="stHeader"] {
+            background-color: #120E1A !important;
+        }
+        
+        /* Heading Style Coloring */
+        h1, h2, h3, h4 {
+            color: #9D4EDD !important; /* Radiant Joker Purple */
+            text-shadow: 1px 1px 2px #000;
+        }
+        
+        /* Custom Tab Navigation Styling */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+            background-color: #1A1429 !important;
+            padding: 8px;
+            border-radius: 8px;
+            border: 1px solid #3A0CA3;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #241B3A !important;
+            color: #E0AAFF !important;
+            border-radius: 4px;
+            padding: 8px 16px;
+            border: 1px solid transparent;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #7B2CBF !important; /* Active Tab Purple */
+            color: #CCFF33 !important; /* Highlight Active Neon Green Text */
+            border: 1px solid #38B000 !important;
+            font-weight: bold !important;
+        }
+        
+        /* Input Field Contours */
+        [data-testid="stWidgetLabel"] p {
+            color: #E0AAFF !important;
+        }
+        div[data-baseweb="input"], div[data-baseweb="textarea"], select, div[data-baseweb="select"] {
+            background-color: #1A1429 !important;
+            border: 1px solid #7B2CBF !important;
+            color: #FFFFFF !important;
+            border-radius: 6px !important;
+        }
+        div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within {
+            border-color: #38B000 !important; /* Changes to Green on Active Click Focus */
+            box-shadow: 0 0 4px #38B000 !important;
+        }
+        
+        /* Action Buttons (General Default Fixes) */
+        button[kind="secondary"] {
+            background-color: #38B000 !important; /* Acid Green Buttons */
+            color: #000000 !important;
+            font-weight: bold !important;
+            border: 1px solid #70E000 !important;
+            border-radius: 6px !important;
+            transition: all 0.3s ease;
+        }
+        button[kind="secondary"]:hover {
+            background-color: #70E000 !important;
+            box-shadow: 0 0 8px #70E000 !important;
+            transform: scale(1.02);
+        }
+        
+        /* Link Buttons Styling Override */
+        a[role="button"] {
+            background-color: #7B2CBF !important; /* Purple Resource Links */
+            color: #FFFFFF !important;
+            border: 1px solid #9D4EDD !important;
+            font-family: 'Georgia', serif !important;
+        }
+        a[role="button"]:hover {
+            background-color: #9D4EDD !important;
+            box-shadow: 0 0 8px #9D4EDD !important;
+        }
+        
+        /* Warning Status Blocks (Pending Tasks Panels) */
+        div[data-testid="stNotification"] {
+            background-color: #1A1429 !important;
+            border-left: 5px solid #38B000 !important; /* Acid Green Left Edge Border Accent */
+            border-top: 1px solid #7B2CBF !important;
+            border-right: 1px solid #7B2CBF !important;
+            border-bottom: 1px solid #7B2CBF !important;
+            color: #E0AAFF !important;
+        }
+        div[data-testid="stNotification"] p, div[data-testid="stNotification"] b {
+            color: #FFFFFF !important;
+        }
+        
+        /* Streamlit Expander Blocks */
+        div[data-testid="stExpander"] {
+            background-color: #1A1429 !important;
+            border: 1px solid #7B2CBF !important;
+        }
+        
+        /* Code Container Summary Screens styling */
+        code {
+            background-color: #0B0812 !important;
+            color: #CCFF33 !important; /* Acid Neon Text Summary inside displays */
+            border: 1px solid #7B2CBF !important;
+            font-family: monospace !important;
         }
     </style>
     """,
@@ -64,10 +170,8 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    if "task_url" not in df.columns:
-        df["task_url"] = ""
-    if "is_recurring" not in df.columns:
-        df["is_recurring"] = "Yes"
+    if "task_url" not in df.columns: df["task_url"] = ""
+    if "is_recurring" not in df.columns: df["is_recurring"] = "Yes"
     df.to_csv(DB_FILE, index=False)
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
@@ -77,10 +181,8 @@ if not os.path.exists(EOD_FILE):
     eod_df.to_csv(EOD_FILE, index=False)
 else:
     eod_df = pd.read_csv(EOD_FILE)
-    if "task_title" not in eod_df.columns:
-        eod_df["task_title"] = "Manual Log"
-    if "log_date" not in eod_df.columns:
-        eod_df["log_date"] = datetime.now().strftime(STORAGE_DATE_FORMAT)
+    if "task_title" not in eod_df.columns: eod_df["task_title"] = "Manual Log"
+    if "log_date" not in eod_df.columns: eod_df["log_date"] = datetime.now().strftime(STORAGE_DATE_FORMAT)
     eod_df.to_csv(EOD_FILE, index=False)
     eod_df["task_title"] = eod_df["task_title"].fillna("Manual Log").astype(str)
     eod_df["bullet_text"] = eod_df["bullet_text"].fillna("").astype(str)
@@ -148,7 +250,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
 
 # Centered main screen title
 st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>🃏 Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
 )
 st.markdown("---")
@@ -219,7 +321,7 @@ with left_panel:
                 col_text, col_action = st.columns([1.8, 1.2])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    st.warning(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
+                    st.write(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
                     with st.expander("📄 View Instructions & Links"):
                         st.write(row['task_description'])
                         task_link = str(row.get('task_url', '')).strip()
@@ -231,7 +333,6 @@ with left_panel:
                         t_url = row['task_url'] if pd.notna(row['task_url']) else ""
                         if send_email_notification(row['task_name'], days_since, t_desc, t_url):
                             st.session_state.emails_sent_today.append(row['task_id'])
-                            st.info(f"📧 Notification dispatched!")
                 
                 with col_action:
                     result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found, etc.", key=f"res_{row['task_id']}")
@@ -257,7 +358,7 @@ with left_panel:
                         if row['task_id'] in st.session_state.emails_sent_today:
                             st.session_state.emails_sent_today.remove(row['task_id'])
                         st.rerun()
-                st.markdown("<hr style='margin:0.4em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:0.4em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
                         
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
@@ -367,13 +468,11 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH FIXED HORIZONTAL ALIGNMENT) ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         
-        # FIXED LAYOUT GRID: Added vertical_alignment="bottom" to align the dropdown and expander perfectly
         col_drop, col_reset = st.columns([1.8, 1.2], gap="large", vertical_alignment="bottom")
-        
         with col_drop:
             range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         
@@ -518,7 +617,7 @@ with left_panel:
                             df = df[df['task_id'] != row['task_id']]
                             save_db(df, DB_FILE)
                             st.rerun()
-                st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:0.05em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
 
         with m_note:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
@@ -557,10 +656,10 @@ with left_panel:
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
                                 save_db(notes_df, NOTES_FILE)
                                 st.rerun()
-                    st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='margin:0.05em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
                     
         with m_danger:
-            st.warning("🚨 **CRITICAL ZONE: Full Factory Reset Dashboard**")
+            st.markdown("<span style='color:#FF4B4B; font-weight:bold;'>🚨 CRITICAL ZONE: Full Factory Reset Dashboard</span>", unsafe_allow_html=True)
             st.write("This tool will permanently delete all your task data, calendar notes, ongoing EOD stagers, and deep history archives, recreating pristine default starter files.")
             confirm_input = st.text_input("Type **RESET ALL** to unlock confirmation:", placeholder="RESET ALL")
             if confirm_input == "RESET ALL":
@@ -576,7 +675,7 @@ with left_panel:
                     st.rerun()
 
 # ------------------------------------------
-# RIGHT PANEL: FLUID VISUAL CALENDAR
+# RIGHT PANEL: FLUID VISUAL CALENDAR (WITH MATCHING JOKER EVENT OVERRIDES)
 # ------------------------------------------
 with right_panel:
     st.header("📅 Monthly Overview")
@@ -587,8 +686,11 @@ with right_panel:
         target_span = get_days_interval(row['frequency'])
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
-        event_color = "#FF4B4B" if is_overdue else "#1C83E1"
+        
+        # Color match: Overdue warnings stay Red, standard rotations get Joker Purple
+        event_color = "#FF4B4B" if is_overdue else "#7B2CBF"
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
+        
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
             "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT),
@@ -599,7 +701,9 @@ with right_panel:
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
             "title": f"📌 {row['title']}", "start": n_date, "end": n_date,
-            "backgroundColor": "#7A41F3", "borderColor": "#7A41F3", "allDay": True
+            "backgroundColor": "#38B000", # Pin notes show up in Acid Green to balance the template look
+            "borderColor": "#38B000", 
+            "allDay": True
         })
         
     calendar_options = {
