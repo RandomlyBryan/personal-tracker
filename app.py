@@ -190,7 +190,8 @@ if not os.path.exists(ARCHIVE_FILE):
     archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
     archive_df.to_csv(ARCHIVE_FILE, index=False)
 else:
-    archive_df = pd.read_csv(archive_df)
+    # FIXED LOGIC: Correctly reading archive data from the file string constant token path path
+    archive_df = pd.read_csv(ARCHIVE_FILE)
     archive_df["log_date"] = archive_df["log_date"].fillna(datetime.now().strftime(STORAGE_DATE_FORMAT)).astype(str)
 
 if not os.path.exists(NOTES_FILE):
@@ -334,7 +335,6 @@ with left_panel:
                             st.session_state.emails_sent_today.append(row['task_id'])
                 
                 with col_action:
-                    # FIXED ALIGNMENT: Sub-divided input and trigger layout with bottom alignment formatting applied
                     col_input, col_btn = st.columns([1.8, 1.2], vertical_alignment="bottom")
                     with col_input:
                         result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
@@ -653,7 +653,7 @@ with left_panel:
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
-                                st.rerun()
+                                r.rerun()
                         with nc3:
                             if st.button("🗑️", key=f"del_note_{row['note_id']}"):
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
