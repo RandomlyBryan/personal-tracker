@@ -11,11 +11,11 @@ import streamlit.components.v1 as components  # Required for HTML/JS injection
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
-# CUSTOM CSS: JOKER THEMING ENGINE (PURPLE & GREEN DARK MODE)
+# CUSTOM CSS: SLEEK DARK MODE THEME ENGINE (MATTE CHARCOAL & ELECTRIC BLUE)
 st.markdown(
     """
     <style>
-        /* Global Font & Background Overrides */
+        /* Global Font & Smooth Interfacing Overrides */
         html, body, [data-testid="stAppViewContainer"], .main, h1, h2, h3, h4, h5, h6, p, label, .stTabs button {
             font-family: 'Georgia', serif !important;
         }
@@ -23,108 +23,107 @@ st.markdown(
             font-family: 'Georgia', serif !important;
         }
         
-        /* Main App Canvas Background */
+        /* Premium Matte Charcoal Background Canvas */
         [data-testid="stAppViewContainer"] {
-            background-color: #120E1A !important;
+            background-color: #0F1115 !important;
         }
         [data-testid="stHeader"] {
-            background-color: #120E1A !important;
+            background-color: #0F1115 !important;
         }
         
-        /* Heading Style Coloring */
+        /* Header Font Coloring */
         h1, h2, h3, h4 {
-            color: #9D4EDD !important; /* Radiant Joker Purple */
+            color: #E2E8F0 !important; /* Crisp Off-White Headers */
             text-shadow: 1px 1px 2px #000;
         }
         
-        /* Custom Tab Navigation Styling */
+        /* Tab Selection Row Contours */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-            background-color: #1A1429 !important;
-            padding: 8px;
+            gap: 6px;
+            background-color: #161920 !important;
+            padding: 6px;
             border-radius: 8px;
-            border: 1px solid #3A0CA3;
+            border: 1px solid #232936;
         }
         .stTabs [data-baseweb="tab"] {
-            background-color: #241B3A !important;
-            color: #E0AAFF !important;
-            border-radius: 4px;
+            background-color: #1A1F29 !important;
+            color: #94A3B8 !important; /* Slate Text */
+            border-radius: 5px;
             padding: 8px 16px;
             border: 1px solid transparent;
         }
         .stTabs [aria-selected="true"] {
-            background-color: #7B2CBF !important; /* Active Tab Purple */
-            color: #CCFF33 !important; /* Highlight Active Neon Green Text */
-            border: 1px solid #38B000 !important;
+            background-color: #1E3A8A !important; /* Premium Midnight Deep Blue */
+            color: #38BDF8 !important; /* Vivid Electric Blue Active Text */
+            border: 1px solid #0284C7 !important;
             font-weight: bold !important;
         }
         
-        /* Input Field Contours */
+        /* Widget and Input Box Fields styling */
         [data-testid="stWidgetLabel"] p {
-            color: #E0AAFF !important;
+            color: #94A3B8 !important;
         }
         div[data-baseweb="input"], div[data-baseweb="textarea"], select, div[data-baseweb="select"] {
-            background-color: #1A1429 !important;
-            border: 1px solid #7B2CBF !important;
-            color: #FFFFFF !important;
+            background-color: #161920 !important;
+            border: 1px solid #2D3748 !important;
+            color: #F8FAFC !important;
             border-radius: 6px !important;
         }
         div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within {
-            border-color: #38B000 !important; /* Changes to Green on Active Click Focus */
-            box-shadow: 0 0 4px #38B000 !important;
+            border-color: #0284C7 !important; /* Active Input box boundary morphs to blue */
+            box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* Action Buttons (General Default Fixes) */
+        /* Secondary Action Buttons (Done, Saves, Triggers) */
         button[kind="secondary"] {
-            background-color: #38B000 !important; /* Acid Green Buttons */
-            color: #000000 !important;
+            background-color: #0284C7 !important; /* Electric Blue Buttons */
+            color: #FFFFFF !important;
             font-weight: bold !important;
-            border: 1px solid #70E000 !important;
+            border: 1px solid #0369A1 !important;
             border-radius: 6px !important;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
         }
         button[kind="secondary"]:hover {
-            background-color: #70E000 !important;
-            box-shadow: 0 0 8px #70E000 !important;
-            transform: scale(1.02);
+            background-color: #0ea5e9 !important;
+            box-shadow: 0 0 8px #0ea5e9 !important;
+            transform: scale(1.01);
         }
         
-        /* Link Buttons Styling Override */
+        /* Resource Anchor Link Button Layout overrides */
         a[role="button"] {
-            background-color: #7B2CBF !important; /* Purple Resource Links */
-            color: #FFFFFF !important;
-            border: 1px solid #9D4EDD !important;
+            background-color: #1E293B !important; /* Slate Blue Link Cards */
+            color: #38BDF8 !important;
+            border: 1px solid #334155 !important;
             font-family: 'Georgia', serif !important;
         }
         a[role="button"]:hover {
-            background-color: #9D4EDD !important;
-            box-shadow: 0 0 8px #9D4EDD !important;
+            background-color: #334155 !important;
+            box-shadow: 0 0 8px #334155 !important;
         }
         
-        /* Warning Status Blocks (Pending Tasks Panels) */
+        /* Pending Alerts Warnings Notification blocks overlay */
         div[data-testid="stNotification"] {
-            background-color: #1A1429 !important;
-            border-left: 5px solid #38B000 !important; /* Acid Green Left Edge Border Accent */
-            border-top: 1px solid #7B2CBF !important;
-            border-right: 1px solid #7B2CBF !important;
-            border-bottom: 1px solid #7B2CBF !important;
-            color: #E0AAFF !important;
+            background-color: #161920 !important;
+            border-left: 5px solid #0284C7 !important; /* Electric Blue Accent Bar */
+            border-top: 1px solid #232936 !important;
+            border-right: 1px solid #232936 !important;
+            border-bottom: 1px solid #232936 !important;
         }
         div[data-testid="stNotification"] p, div[data-testid="stNotification"] b {
-            color: #FFFFFF !important;
+            color: #E2E8F0 !important;
         }
         
-        /* Streamlit Expander Blocks */
+        /* Expandable Accordion structures */
         div[data-testid="stExpander"] {
-            background-color: #1A1429 !important;
-            border: 1px solid #7B2CBF !important;
+            background-color: #161920 !important;
+            border: 1px solid #232936 !important;
         }
         
-        /* Code Container Summary Screens styling */
+        /* Technical Content Code Blocks */
         code {
-            background-color: #0B0812 !important;
-            color: #CCFF33 !important; /* Acid Neon Text Summary inside displays */
-            border: 1px solid #7B2CBF !important;
+            background-color: #090B0E !important;
+            color: #38BDF8 !important; /* Clear Blue code text output displays */
+            border: 1px solid #1E293B !important;
             font-family: monospace !important;
         }
     </style>
@@ -250,7 +249,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
 
 # Centered main screen title
 st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>🃏 Personal Tracker Dashboard</h1>", 
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
 )
 st.markdown("---")
@@ -358,7 +357,7 @@ with left_panel:
                         if row['task_id'] in st.session_state.emails_sent_today:
                             st.session_state.emails_sent_today.remove(row['task_id'])
                         st.rerun()
-                st.markdown("<hr style='margin:0.4em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
                         
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
@@ -617,7 +616,7 @@ with left_panel:
                             df = df[df['task_id'] != row['task_id']]
                             save_db(df, DB_FILE)
                             st.rerun()
-                st.markdown("<hr style='margin:0.05em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
 
         with m_note:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
@@ -656,10 +655,10 @@ with left_panel:
                                 notes_df = notes_df[notes_df['note_id'] != row['note_id']]
                                 save_db(notes_df, NOTES_FILE)
                                 st.rerun()
-                    st.markdown("<hr style='margin:0.05em 0px; border-color:#3A0CA3;'>", unsafe_allow_html=True)
+                    st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
                     
         with m_danger:
-            st.markdown("<span style='color:#FF4B4B; font-weight:bold;'>🚨 CRITICAL ZONE: Full Factory Reset Dashboard</span>", unsafe_allow_html=True)
+            st.markdown("<span style='color:#EF4444; font-weight:bold;'>🚨 CRITICAL ZONE: Full Factory Reset Dashboard</span>", unsafe_allow_html=True)
             st.write("This tool will permanently delete all your task data, calendar notes, ongoing EOD stagers, and deep history archives, recreating pristine default starter files.")
             confirm_input = st.text_input("Type **RESET ALL** to unlock confirmation:", placeholder="RESET ALL")
             if confirm_input == "RESET ALL":
@@ -675,7 +674,7 @@ with left_panel:
                     st.rerun()
 
 # ------------------------------------------
-# RIGHT PANEL: FLUID VISUAL CALENDAR (WITH MATCHING JOKER EVENT OVERRIDES)
+# RIGHT PANEL: FLUID VISUAL CALENDAR
 # ------------------------------------------
 with right_panel:
     st.header("📅 Monthly Overview")
@@ -687,8 +686,8 @@ with right_panel:
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
         
-        # Color match: Overdue warnings stay Red, standard rotations get Joker Purple
-        event_color = "#FF4B4B" if is_overdue else "#7B2CBF"
+        # Color profile: Overdue warnings stay Red, standard tasks match our sleek dark palette
+        event_color = "#EF4444" if is_overdue else "#1E3A8A"
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         
         calendar_events.append({
@@ -701,8 +700,8 @@ with right_panel:
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
             "title": f"📌 {row['title']}", "start": n_date, "end": n_date,
-            "backgroundColor": "#38B000", # Pin notes show up in Acid Green to balance the template look
-            "borderColor": "#38B000", 
+            "backgroundColor": "#334155", # Pinned calendar events display in clean slate borders
+            "borderColor": "#334155", 
             "allDay": True
         })
         
