@@ -61,7 +61,7 @@ def get_starter_tasks():
 # Load/Initialize Databases
 if not os.path.exists(DB_FILE):
     df = pd.DataFrame(get_starter_tasks())
-    df.to_csv(DB_FILE, index=False)
+    save_db(df, DB_FILE)
 else:
     df = pd.read_csv(DB_FILE)
     if "task_url" not in df.columns:
@@ -204,7 +204,7 @@ with left_panel:
         "⚙️ Existing Task"
     ])
     
-    # --- TAB 1: PENDING TASKS & ALERTS (WITH RESULT ENTRY BOX) ---
+    # --- TAB 1: PENDING TASKS & ALERTS ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         reminders_found = False
@@ -216,8 +216,6 @@ with left_panel:
             
             if days_since >= needed_days:
                 reminders_found = True
-                
-                # Layout Split: 2 Columns for textual details expander and your live result submission setup
                 col_text, col_action = st.columns([1.8, 1.2])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
@@ -236,10 +234,8 @@ with left_panel:
                             st.info(f"📧 Notification dispatched!")
                 
                 with col_action:
-                    # NEW FEATURE: Dynamic custom note/result box for what you actually finished
                     result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found, etc.", key=f"res_{row['task_id']}")
                     if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
-                        # Capture input text. If empty, default to "Completed successfully."
                         clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                         
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
@@ -351,7 +347,7 @@ with left_panel:
         for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
             
         prio_header = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n"
-        compiled_prio_report = prio_header + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
+        compiled_prio_report = prio_header + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.)")
             
         st.markdown("**Next Day Priorities:**")
         st.code(compiled_prio_report, language=None)
@@ -371,11 +367,26 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH INDEPENDENT RESET CONTROL) ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
-        range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         
+        col_drop, col_reset = st.columns([2.2, 1.8], gap="medium")
+        with col_drop:
+            range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
+        
+        with col_reset:
+            # NEW EXTENSION: Independent Historic Ledger Clear Tools
+            with st.expander("🗑️ Clear History Logs"):
+                st.caption("Permanently clear your master historic archive file (`eod_master_archive.csv`). This won't affect active or pending tasks.")
+                confirm_history_wipe = st.checkbox("Confirm permanent delete of all history rows", key="hist_wipe_check")
+                if confirm_history_wipe:
+                    if st.button("💥 Wipe History File", use_container_width=True):
+                        archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
+                        save_db(archive_df, ARCHIVE_FILE)
+                        st.success("History database cleared!")
+                        st.rerun()
+
         filter_start = today
         filter_end = today
         
@@ -547,23 +558,16 @@ with left_panel:
                                 st.rerun()
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
                     
-        # NEW FEATURE: Complete System Reset Tab
         with m_danger:
             st.warning("🚨 **CRITICAL ZONE: Full Factory Reset Dashboard**")
             st.write("This tool will permanently delete all your task data, calendar notes, ongoing EOD stagers, and deep history archives, recreating pristine default starter files.")
-            
             confirm_input = st.text_input("Type **RESET ALL** to unlock confirmation:", placeholder="RESET ALL")
             if confirm_input == "RESET ALL":
                 if st.button("💥 WIPE ALL TRACKER REPOSITORIES", use_container_width=True):
-                    # Reset primary task engine down to default demo rows
                     df = pd.DataFrame(get_starter_tasks())
                     save_db(df, DB_FILE)
-                    
-                    # Hard purge all trailing operational CSV blocks completely
                     for target_csv in [NOTES_FILE, EOD_FILE, PRIORITIES_FILE, ARCHIVE_FILE]:
-                        if os.path.exists(target_csv):
-                            os.remove(target_csv)
-                    
+                        if os.path.exists(target_csv): os.remove(target_csv)
                     st.success("System reset successful! Rebooting tracker dashboard...")
                     st.session_state.editing_task_id = None
                     st.session_state.editing_note_id = None
@@ -586,22 +590,15 @@ with right_panel:
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
-            "start": next_due.strftime(STORAGE_DATE_FORMAT),
-            "end": next_due.strftime(STORAGE_DATE_FORMAT),
-            "backgroundColor": event_color,
-            "borderColor": event_color,
-            "allDay": True
+            "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT),
+            "backgroundColor": event_color, "borderColor": event_color, "allDay": True
         })
         
     for index, row in notes_df.iterrows():
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
-            "title": f"📌 {row['title']}",
-            "start": n_date,
-            "end": n_date,
-            "backgroundColor": "#7A41F3",
-            "borderColor": "#7A41F3",
-            "allDay": True
+            "title": f"📌 {row['title']}", "start": n_date, "end": n_date,
+            "backgroundColor": "#7A41F3", "borderColor": "#7A41F3", "allDay": True
         })
         
     calendar_options = {
