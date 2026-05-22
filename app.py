@@ -126,6 +126,11 @@ st.markdown(
             border: 1px solid #1E293B !important;
             font-family: monospace !important;
         }
+        
+        /* Custom spacing for individual quick copy block modules */
+        .quick-copy-wrapper {
+            margin-bottom: -12px;
+        }
     </style>
     """,
     unsafe_allow_html=True
@@ -317,8 +322,6 @@ with left_panel:
             
             if days_since >= needed_days:
                 reminders_found = True
-                
-                # Optimized layout split: Giving the text section more space
                 col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
@@ -336,7 +339,6 @@ with left_panel:
                             st.session_state.emails_sent_today.append(row['task_id'])
                 
                 with col_action:
-                    # UPDATED COLUMN RATIO: Using [2.2, 0.8] to compress the gap and snap the button right next to the text box
                     col_input, col_btn = st.columns([2.2, 0.8], vertical_alignment="bottom")
                     with col_input:
                         result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
@@ -368,11 +370,20 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER ---
+    # --- TAB 2: EOD REPORT LOG BUILDER WITH INDIVIDUAL QUICK COPIERS ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
-        st.code("Bryan Reyes\nwork.bryanc@gmail.com\nMarketing & Reporting VA", language=None)
+        
+        # UPGRADE: Separating the information into individual components to activate dedicated clipboard buttons
+        st.markdown("<div class='quick-copy-wrapper'>", unsafe_allow_html=True)
+        st.code("Bryan Reyes", language=None)
+        st.markdown("</div><div class='quick-copy-wrapper'>", unsafe_allow_html=True)
+        st.code("work.bryanc@gmail.com", language=None)
+        st.markdown("</div><div class='quick-copy-wrapper'>", unsafe_allow_html=True)
+        st.code("Marketing & Reporting VA", language=None)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
         st.markdown("---")
         
         eod_log_col, prio_log_col = st.columns(2)
@@ -697,7 +708,7 @@ with right_panel:
         
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
-            "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT),
+            "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_FORMAT if 'STORAGE_FORMAT' in locals() else STORAGE_DATE_FORMAT),
             "backgroundColor": event_color, "borderColor": event_color, "allDay": True
         })
         
