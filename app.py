@@ -43,9 +43,8 @@ if "editing_note_id" not in st.session_state:
 if "emails_sent_today" not in st.session_state:
     st.session_state.emails_sent_today = []
 
-# Load/Initialize Databases
-if not os.path.exists(DB_FILE):
-    starter_data = {
+def get_starter_tasks():
+    return {
         "task_id": [1, 2, 3],
         "task_name": ["Daily Standup Check", "Weekly App Sync", "Monthly Budget Check"],
         "task_description": ["Review code checklist.", "Verify remote logs.", "Export statements."],
@@ -58,16 +57,18 @@ if not os.path.exists(DB_FILE):
             (datetime.now() - timedelta(days=32)).strftime(STORAGE_DATE_FORMAT)
         ]
     }
-    df = pd.DataFrame(starter_data)
+
+# Load/Initialize Databases
+if not os.path.exists(DB_FILE):
+    df = pd.DataFrame(get_starter_tasks())
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
     if "task_url" not in df.columns:
         df["task_url"] = ""
-        df.to_csv(DB_FILE, index=False)
     if "is_recurring" not in df.columns:
         df["is_recurring"] = "Yes"
-        df.to_csv(DB_FILE, index=False)
+    df.to_csv(DB_FILE, index=False)
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
 
@@ -162,7 +163,6 @@ for _, row in df.iterrows():
     if (today - last_comp_date).days >= get_days_interval(row['frequency']):
         overdue_tasks_list.append(row['task_name'])
 
-# If overdue items exist, render native browser notifications engine
 if overdue_tasks_list:
     alert_summary = f"You have {len(overdue_tasks_list)} items requiring update: " + ", ".join(overdue_tasks_list[:2])
     if len(overdue_tasks_list) > 2:
@@ -171,22 +171,13 @@ if overdue_tasks_list:
     js_notification_code = f"""
     <script>
     function triggerDesktopPush() {{
-        if (!("Notification" in window)) {{
-            console.log("Browser does not support notifications.");
-            return;
-        }}
+        if (!("Notification" in window)) return;
         if (Notification.permission === "granted") {{
-            new Notification("⏰ Overdue Routines Alert", {{
-                body: "{alert_summary}",
-                icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png"
-            }});
+            new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
         }} else if (Notification.permission !== "denied") {{
             Notification.requestPermission().then(function (permission) {{
                 if (permission === "granted") {{
-                    new Notification("⏰ Overdue Routines Alert", {{
-                        body: "{alert_summary}",
-                        icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png"
-                    }});
+                    new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
                 }}
             }});
         }}
@@ -208,12 +199,12 @@ with left_panel:
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs([
         "🚨 Pending Tasks", 
         "📝 EOD Report", 
-        "📊 Task History", 
+        "📊 Archive Viewer", 
         "➕ New Task", 
         "⚙️ Existing Task"
     ])
     
-    # --- TAB 1: PENDING TASKS & ALERTS ---
+    # --- TAB 1: PENDING TASKS & ALERTS (WITH RESULT ENTRY BOX) ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         reminders_found = False
@@ -225,11 +216,13 @@ with left_panel:
             
             if days_since >= needed_days:
                 reminders_found = True
-                col_text, col_btn = st.columns([3, 1])
+                
+                # Layout Split: 2 Columns for textual details expander and your live result submission setup
+                col_text, col_action = st.columns([1.8, 1.2])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.warning(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
-                    with st.expander("📄 View Details & Resources"):
+                    with st.expander("📄 View Instructions & Links"):
                         st.write(row['task_description'])
                         task_link = str(row.get('task_url', '')).strip()
                         if task_link and task_link != "nan" and task_link != "":
@@ -240,18 +233,20 @@ with left_panel:
                         t_url = row['task_url'] if pd.notna(row['task_url']) else ""
                         if send_email_notification(row['task_name'], days_since, t_desc, t_url):
                             st.session_state.emails_sent_today.append(row['task_id'])
-                            st.info(f"📧 Notification dispatched for '{row['task_name']}'!")
-                            
-                with col_btn:
-                    if st.button("Done", key=f"remind_btn_{row['task_id']}"):
-                        raw_desc = str(row['task_description']).strip()
-                        clean_desc = raw_desc if raw_desc and raw_desc != "nan" and raw_desc != "No instructions." else "Completed successfully."
+                            st.info(f"📧 Notification dispatched!")
+                
+                with col_action:
+                    # NEW FEATURE: Dynamic custom note/result box for what you actually finished
+                    result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found, etc.", key=f"res_{row['task_id']}")
+                    if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
+                        # Capture input text. If empty, default to "Completed successfully."
+                        clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                         
                         new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                         new_log_row = {
                             "log_id": new_log_id, 
                             "task_title": str(row['task_name']).strip(), 
-                            "bullet_text": clean_desc,
+                            "bullet_text": clean_notes,
                             "log_date": today.strftime(STORAGE_DATE_FORMAT)
                         }
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
@@ -263,21 +258,19 @@ with left_panel:
                             df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                         
                         save_db(df, DB_FILE)
-                        
                         if row['task_id'] in st.session_state.emails_sent_today:
                             st.session_state.emails_sent_today.remove(row['task_id'])
                         st.rerun()
+                st.markdown("<hr style='margin:0.4em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
                         
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER WITH SMART TITLES GROUPING ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
-        st.code("Bryan Reyes", language=None)
-        st.code("work.bryanc@gmail.com", language=None)
-        st.code("Marketing & Reporting VA", language=None)
+        st.code("Bryan Reyes\nwork.bryanc@gmail.com\nMarketing & Reporting VA", language=None)
         st.markdown("---")
         
         eod_log_col, prio_log_col = st.columns(2)
@@ -331,12 +324,10 @@ with left_panel:
             
             for title, notes in seen_titles.items():
                 if title == "Manual Log":
-                    for note in notes:
-                        grouped_lines.append(f"• {note}")
+                    for note in notes: grouped_lines.append(f"• {note}")
                 else:
                     grouped_lines.append(f"• {title}:")
-                    for note in notes:
-                        grouped_lines.append(f"  - {note}")
+                    for note in notes: grouped_lines.append(f"  - {note}")
                         
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else:
@@ -345,7 +336,6 @@ with left_panel:
         st.markdown("**EOD Summary:**")
         st.code(compiled_report, language=None)
         
-        # Next Day Priorities block
         auto_priorities = []
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row['last_completed'])
@@ -358,17 +348,10 @@ with left_panel:
             elif n_due == tomorrow:
                 auto_priorities.append(f"• [SCHEDULED] {row['task_name']} (Due Tomorrow)")
                 
-        for _, row in prio_df.iterrows():
-            auto_priorities.append(f"• {row['item_text']}")
+        for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
             
-        prio_header = (
-            f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n"
-            f"----------------------------------------\n"
-        )
-        if auto_priorities:
-            compiled_prio_report = prio_header + "\n".join(auto_priorities)
-        else:
-            compiled_prio_report = prio_header + "• No priorities scheduled for tomorrow."
+        prio_header = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n"
+        compiled_prio_report = prio_header + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
             
         st.markdown("**Next Day Priorities:**")
         st.code(compiled_prio_report, language=None)
@@ -379,10 +362,8 @@ with left_panel:
             if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
                 archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
                 save_db(archive_df, ARCHIVE_FILE)
-                
                 eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
                 save_db(eod_df, EOD_FILE)
-                st.success("🔒 Staged rows permanently archived & workspace reset!")
                 st.rerun()
         with col_clear_p:
             if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
@@ -390,12 +371,9 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN WITH DROPDOWN MIGRATION ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
-        st.subheader("📊 Completed Task History")
-        st.write("Browse through your complete historical logs by selecting a time window from the dropdown selection:")
-        
-        # UPGRADE: Swapped the wide st.radio buttons layout out for a tight, space-saving dropdown selectbox 
+        st.subheader("📊 Completed Work History Archive")
         range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         
         filter_start = today
@@ -409,26 +387,17 @@ with left_panel:
             filter_end = (filter_start + timedelta(days=32)).replace(day=1) - timedelta(days=1)
         elif range_selection == "Custom Date Range":
             col_date1, col_date2 = st.columns(2)
-            with col_date1:
-                filter_start = st.date_input("Start Date Target:", value=today - timedelta(days=7))
-            with col_date2:
-                filter_end = st.date_input("End Date Target:", value=today)
+            with col_date1: filter_start = st.date_input("Start Date Target:", value=today - timedelta(days=7))
+            with col_date2: filter_end = st.date_input("End Date Target:", value=today)
                 
         if archive_df.empty:
-            st.info("Your master archive file is currently empty. Complete tasks and hit 'Clear Logged Work' to begin building history records.")
+            st.info("Your master archive file is currently empty.")
         else:
             archive_df['parsed_date'] = archive_df['log_date'].apply(parse_date_safely)
-            
-            if range_selection == "All Logs":
-                filtered_archive = archive_df.copy()
-            else:
-                filtered_archive = archive_df[
-                    (archive_df['parsed_date'] >= filter_start) & 
-                    (archive_df['parsed_date'] <= filter_end)
-                ]
+            filtered_archive = archive_df.copy() if range_selection == "All Logs" else archive_df[(archive_df['parsed_date'] >= filter_start) & (archive_df['parsed_date'] <= filter_end)]
                 
             if filtered_archive.empty:
-                st.warning(f"No archived rows match selected window filter: ({filter_start.strftime(DATE_FORMAT)} to {filter_end.strftime(DATE_FORMAT)})")
+                st.warning(f"No archived rows match selected window filter.")
             else:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} actions logged)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
@@ -438,13 +407,9 @@ with left_panel:
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title = row['task_title']
                     note = row['bullet_text']
-                    
                     date_key = f"📅 Date: {f_date_str}"
-                    if date_key not in seen_history_blocks:
-                        seen_history_blocks[date_key] = {}
-                    
-                    if title not in seen_history_blocks[date_key]:
-                        seen_history_blocks[date_key][title] = []
+                    if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
+                    if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append(note)
                 
                 output_lines = []
@@ -453,46 +418,29 @@ with left_panel:
                     output_lines.append("-" * 40)
                     for title, notes in titles_dict.items():
                         if title == "Manual Log":
-                            for note in notes:
-                                output_lines.append(f"• {note}")
+                            for note in notes: output_lines.append(f"• {note}")
                         else:
                             output_lines.append(f"• {title}:")
-                            for note in notes:
-                                output_lines.append(f"  - {note}")
+                            for note in notes: output_lines.append(f"  - {note}")
                     output_lines.append("\n")
-                    
                 st.code("\n".join(output_lines), language=None)
 
     # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
-        
         with sub_tab_task:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
                 new_url = st.text_input("Task URL Link (Optional)")
-                
                 col_f1, col_f2 = st.columns(2)
-                with col_f1:
-                    new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
-                with col_f2:
-                    recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"], help="Select 'No' if this task should vanish forever once marked Done.")
-                
+                with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
+                with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
                 start_date = st.date_input("Routine Start Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
-                
                 if submitted and new_name:
                     new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    new_row = {
-                        "task_id": new_id,
-                        "task_name": new_name,
-                        "task_description": new_desc if new_desc else "No instructions.",
-                        "task_url": new_url.strip(),
-                        "frequency": new_freq,
-                        "is_recurring": recurrence_setting,
-                        "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)
-                    }
+                    new_row = {"task_id": new_id, "task_name": new_name, "task_description": new_desc if new_desc else "No instructions.", "task_url": new_url.strip(), "frequency": new_freq, "is_recurring": recurrence_setting, "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)}
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     save_db(df, DB_FILE)
                     st.rerun()
@@ -503,36 +451,28 @@ with left_panel:
                 note_details = st.text_area("Agenda Notes")
                 note_date = st.date_input("Event Date", value=today)
                 submitted_note = st.form_submit_button("Pin to Calendar")
-                
                 if submitted_note and note_title:
                     new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    new_note_row = {
-                        "note_id": new_note_id,
-                        "title": note_title,
-                        "details": note_details if note_details else "",
-                        "event_date": note_date.strftime(STORAGE_DATE_FORMAT)
-                    }
+                    new_note_row = {"note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}
                     notes_df = pd.concat([notes_df, pd.DataFrame([new_note_row])], ignore_index=True)
                     save_db(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 5: MAINTENANCE LISTS (EDIT & DELETE) ---
+    # --- TAB 5: MAINTENANCE LISTS & FACTORY RESET ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
-        m_task, m_note = st.tabs(["Rotations", "Calendar Notes"])
+        m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
         
         with m_task:
             for index, row in df.iterrows():
                 ec1, ec2, ec3 = st.columns([3, 1, 1])
                 current_task_date = parse_date_safely(row['last_completed'])
-                
                 if st.session_state.editing_task_id == row['task_id']:
                     with ec1:
                         edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
                         edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
                         current_url_raw = row.get('task_url', '')
-                        edit_url_val = str(current_url_raw) if pd.notna(current_url_raw) else ""
-                        edit_url = st.text_input("URL Link", value=edit_url_val, key=f"eurl_{row['task_id']}")
+                        edit_url = st.text_input("URL Link", value=str(current_url_raw) if pd.notna(current_url_raw) else "", key=f"eurl_{row['task_id']}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
                         current_rec_val = str(row.get('is_recurring', 'Yes'))
@@ -569,19 +509,16 @@ with left_panel:
                 st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
 
         with m_note:
-            if notes_df.empty:
-                st.info("No temporary calendar notes pinned.")
+            if notes_df.empty: st.info("No temporary calendar notes pinned.")
             else:
                 for index, row in notes_df.iterrows():
                     nc1, nc2, nc3 = st.columns([3, 1, 1])
-                    
                     if st.session_state.editing_note_id == row['note_id']:
                         current_note_date = parse_date_safely(row['event_date'])
                         with nc1:
                             edit_note_title = st.text_input("Edit Note Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
                             edit_note_details = st.text_area("Edit Note Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
-                        with nc2:
-                            edit_note_date = st.date_input("Edit Note Date", value=current_note_date, key=f"endate_{row['note_id']}", label_visibility="collapsed")
+                        with nc2: edit_note_date = st.date_input("Edit Note Date", value=current_note_date, key=f"endate_{row['note_id']}", label_visibility="collapsed")
                         with nc3:
                             if st.button("💾", key=f"s_note_{row['note_id']}"):
                                 notes_df.at[index, 'title'] = edit_note_title
@@ -598,8 +535,7 @@ with left_panel:
                             f_date = parse_date_safely(row['event_date']).strftime(DATE_FORMAT)
                             st.write(f"📌 **{f_date}** — {row['title']}")
                             if row['details']:
-                                with st.expander("📄 View Agenda Notes"):
-                                    st.write(row['details'])
+                                with st.expander("📄 View Agenda Notes"): st.write(row['details'])
                         with nc2:
                             if st.button("✏️", key=f"em_note_{row['note_id']}"):
                                 st.session_state.editing_note_id = row['note_id']
@@ -610,23 +546,43 @@ with left_panel:
                                 save_db(notes_df, NOTES_FILE)
                                 st.rerun()
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#f0f2f6;'>", unsafe_allow_html=True)
+                    
+        # NEW FEATURE: Complete System Reset Tab
+        with m_danger:
+            st.warning("🚨 **CRITICAL ZONE: Full Factory Reset Dashboard**")
+            st.write("This tool will permanently delete all your task data, calendar notes, ongoing EOD stagers, and deep history archives, recreating pristine default starter files.")
+            
+            confirm_input = st.text_input("Type **RESET ALL** to unlock confirmation:", placeholder="RESET ALL")
+            if confirm_input == "RESET ALL":
+                if st.button("💥 WIPE ALL TRACKER REPOSITORIES", use_container_width=True):
+                    # Reset primary task engine down to default demo rows
+                    df = pd.DataFrame(get_starter_tasks())
+                    save_db(df, DB_FILE)
+                    
+                    # Hard purge all trailing operational CSV blocks completely
+                    for target_csv in [NOTES_FILE, EOD_FILE, PRIORITIES_FILE, ARCHIVE_FILE]:
+                        if os.path.exists(target_csv):
+                            os.remove(target_csv)
+                    
+                    st.success("System reset successful! Rebooting tracker dashboard...")
+                    st.session_state.editing_task_id = None
+                    st.session_state.editing_note_id = None
+                    st.session_state.emails_sent_today = []
+                    st.rerun()
 
 # ------------------------------------------
-# RIGHT PANEL: FLUID VISUAL CALENDAR WITH SMART HEIGHT RESPONSIVENESS
+# RIGHT PANEL: FLUID VISUAL CALENDAR
 # ------------------------------------------
 with right_panel:
     st.header("📅 Monthly Overview")
-    
     calendar_events = []
     
-    # 1. Plot Tasks
     for index, row in df.iterrows():
         base_date = parse_date_safely(row['last_completed'])
         target_span = get_days_interval(row['frequency'])
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
         event_color = "#FF4B4B" if is_overdue else "#1C83E1"
-        
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
@@ -637,7 +593,6 @@ with right_panel:
             "allDay": True
         })
         
-    # 2. Plot Notes
     for index, row in notes_df.iterrows():
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({
@@ -651,16 +606,8 @@ with right_panel:
         
     calendar_options = {
         "initialView": "dayGridMonth",
-        "headerToolbar": {
-            "left": "prev,next today",
-            "center": "title",
-            "right": ""
-        },
-        "editable": False,
-        "selectable": True,
-        "height": "auto",
-        "dayMaxEvents": True,
-        "moreLinkClick": "popover"
+        "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" },
+        "editable": False, "selectable": True, "height": "auto",
+        "dayMaxEvents": True, "moreLinkClick": "popover"
     }
-    
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
