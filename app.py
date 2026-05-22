@@ -208,7 +208,7 @@ with left_panel:
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs([
         "🚨 Pending Tasks", 
         "📝 EOD Report", 
-        "📊 Completed Task History", 
+        "📊 Archive Viewer", 
         "➕ New Task", 
         "⚙️ Existing Task"
     ])
@@ -390,12 +390,13 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW SCREEN WITH DROPDOWN MIGRATION ---
     with tab_archive:
-        st.subheader("📊 Completed Task Archive")
-        st.write("Browse through your complete historical logs by selecting a quick filter range or setting a manual calendar span below:")
+        st.subheader("📊 Completed Work History Archive")
+        st.write("Browse through your complete historical logs by selecting a time window from the dropdown selection:")
         
-        range_selection = st.radio("Select View Frame:", ["All Logs", "This Week", "This Month", "Custom Date Range"], horizontal=True)
+        # UPGRADE: Swapped the wide st.radio buttons layout out for a tight, space-saving dropdown selectbox 
+        range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         
         filter_start = today
         filter_end = today
@@ -648,7 +649,6 @@ with right_panel:
             "allDay": True
         })
         
-    # FIXED CONFIGURATION: Implemented event limit filters to keep rows from overflowing day squares
     calendar_options = {
         "initialView": "dayGridMonth",
         "headerToolbar": {
@@ -659,8 +659,8 @@ with right_panel:
         "editable": False,
         "selectable": True,
         "height": "auto",
-        "dayMaxEvents": True,           # Automatically wraps extra rows into a clean text link block
-        "moreLinkClick": "popover"     # Shows a beautiful popover container when clicked
+        "dayMaxEvents": True,
+        "moreLinkClick": "popover"
     }
     
     calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
