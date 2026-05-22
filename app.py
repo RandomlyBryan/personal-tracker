@@ -61,7 +61,7 @@ def get_starter_tasks():
 # Load/Initialize Databases
 if not os.path.exists(DB_FILE):
     df = pd.DataFrame(get_starter_tasks())
-    save_db(df, DB_FILE)
+    df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
     if "task_url" not in df.columns:
@@ -347,7 +347,7 @@ with left_panel:
         for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
             
         prio_header = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n"
-        compiled_prio_report = prio_header + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.)")
+        compiled_prio_report = prio_header + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
             
         st.markdown("**Next Day Priorities:**")
         st.code(compiled_prio_report, language=None)
@@ -367,16 +367,17 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH INDEPENDENT RESET CONTROL) ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH FIXED HORIZONTAL ALIGNMENT) ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         
-        col_drop, col_reset = st.columns([2.2, 1.8], gap="medium")
+        # FIXED LAYOUT GRID: Added vertical_alignment="bottom" to align the dropdown and expander perfectly
+        col_drop, col_reset = st.columns([1.8, 1.2], gap="large", vertical_alignment="bottom")
+        
         with col_drop:
             range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         
         with col_reset:
-            # NEW EXTENSION: Independent Historic Ledger Clear Tools
             with st.expander("🗑️ Clear History Logs"):
                 st.caption("Permanently clear your master historic archive file (`eod_master_archive.csv`). This won't affect active or pending tasks.")
                 confirm_history_wipe = st.checkbox("Confirm permanent delete of all history rows", key="hist_wipe_check")
