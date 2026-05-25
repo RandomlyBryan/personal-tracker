@@ -268,20 +268,12 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
     except Exception as e:
         return False
 
-# Centered Title
-st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
-    unsafe_allow_html=True
-)
-st.markdown("---")
-
 today = datetime.now().date()
 tomorrow = today + timedelta(days=1)
 
 # --- CALCULATE OVERDUE TASKS FOR PUSH ALERTS ---
 overdue_tasks_list = []
 for _, row in df.iterrows():
-    # FIXED LOGIC: Safe fallback evaluation for old task data structures
     last_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
     if (today - last_comp_date).days >= get_days_interval(row.get('frequency', 'Daily')):
         overdue_tasks_list.append(row.get('task_name', 'Unknown Task'))
@@ -738,11 +730,12 @@ with left_panel:
                         if current_url_val and current_url_val != "nan" and current_url_val != "":
                             st.caption(f"🔗 Link Data Saved")
                     with ec2:
-                        if st.button("✏️", key=f"em_{row.get('task_id']}"):
+                        # FIXED EXPRESSION: Corrected bracket typo to valid bracket interpolation closure logic
+                        if st.button("✏️", key=f"em_{row.get('task_id')}"):
                             st.session_state.editing_task_id = row.get('task_id')
                             st.rerun()
                     with ec3:
-                        if st.button("🗑️", key=f"d_{row.get('task_id']}"):
+                        if st.button("🗑️", key=f"d_{row.get('task_id')}"):
                             df = df[df['task_id'] != row.get('task_id')]
                             save_db(df, DB_FILE)
                             st.rerun()
