@@ -268,7 +268,49 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
     except Exception as e:
         return False
 
-# Side-by-side split layout
+# Centered Title
+st.markdown(
+    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
+    unsafe_allow_html=True
+)
+st.markdown("---")
+
+today = datetime.now().date()
+tomorrow = today + timedelta(days=1)
+
+# --- CALCULATE OVERDUE TASKS FOR PUSH ALERTS ---
+overdue_tasks_list = []
+for _, row in df.iterrows():
+    # FIXED LOGIC: Safe fallback evaluation for old task data structures
+    last_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+    if (today - last_comp_date).days >= get_days_interval(row.get('frequency', 'Daily')):
+        overdue_tasks_list.append(row.get('task_name', 'Unknown Task'))
+
+if overdue_tasks_list:
+    alert_summary = f"You have {len(overdue_tasks_list)} items requiring update: " + ", ".join(overdue_tasks_list[:2])
+    if len(overdue_tasks_list) > 2:
+        alert_summary += f" and {len(overdue_tasks_list) - 2} more."
+
+    js_notification_code = f"""
+    <script>
+    function triggerDesktopPush() {{
+        if (!("Notification" in window)) return;
+        if (Notification.permission === "granted") {{
+            new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
+        }} else if (Notification.permission !== "denied") {{
+            Notification.requestPermission().then(function (permission) {{
+                if (permission === "granted") {{
+                    new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
+                }}
+            }});
+        }}
+    }}
+    setTimeout(triggerDesktopPush, 1000);
+    </script>
+    """
+    components.html(js_notification_code, height=0, width=0)
+
+# Split Layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
@@ -285,15 +327,15 @@ with left_panel:
         "⚙️ Existing Task"
     ])
     
-    # --- TAB 1: PENDING TASKS & ALERTS (RENDER PRE-SAVED MEDIA/LINKS) ---
+    # --- TAB 1: PENDING TASKS & ALERTS ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         reminders_found = False
         
         for index, row in df.copy().iterrows():
-            last_comp_date = parse_date_safely(row['last_completed'])
+            last_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
             days_since = (today - last_comp_date).days
-            needed_days = get_days_interval(row['frequency'])
+            needed_days = get_days_interval(row.get('frequency', 'Daily'))
             
             if days_since >= needed_days:
                 reminders_found = True
@@ -301,20 +343,17 @@ with left_panel:
                 col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    st.write(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
+                    st.write(f"**{row.get('task_name', 'Unnamed Task')}** ({row.get('frequency', 'Daily')} — *{type_label}*)")
                     
                     with st.expander("📄 View Instructions & Links"):
-                        st.write(row['task_description'])
+                        st.write(row.get('task_description', 'No instructions.'))
                         
-                        # Render pre-saved resource links dynamically as launching buttons
                         saved_links_str = str(row.get('task_url', '')).strip()
                         if saved_links_str and saved_links_str != "nan":
-                            # Split by comma if multiple links exist
                             for url_item in saved_links_str.split(","):
                                 if url_item.strip():
                                     st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
                         
-                        # Render pre-saved instruction screenshots if available
                         saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
                         if saved_img_b64 and saved_img_b64 != "nan":
                             try:
@@ -323,25 +362,24 @@ with left_panel:
                             except Exception:
                                 pass
                     
-                    if row['task_id'] not in st.session_state.emails_sent_today:
-                        t_desc = row['task_description'] if pd.notna(row['task_description']) else "No instructions provided."
-                        t_url = row['task_url'] if pd.notna(row['task_url']) else ""
-                        if send_email_notification(row['task_name'], days_since, t_desc, t_url):
-                            st.session_state.emails_sent_today.append(row['task_id'])
+                    if row.get('task_id') not in st.session_state.emails_sent_today:
+                        t_desc = row.get('task_description', 'No instructions provided.')
+                        t_url = row.get('task_url', '')
+                        if send_email_notification(row.get('task_name', 'Task'), days_since, t_desc, t_url):
+                            st.session_state.emails_sent_today.append(row.get('task_id'))
                 
                 with col_action:
                     col_input, col_btn = st.columns([2.2, 0.8], vertical_alignment="bottom")
                     with col_input:
-                        result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
+                        result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row.get('task_id')}")
                     with col_btn:
-                        if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
+                        if st.button("Done", key=f"remind_btn_{row.get('task_id')}", use_container_width=True):
                             clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                             
-                            # Automatically pass down saved parameters into today's logged summary rows
                             new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                             new_log_row = {
                                 "log_id": new_log_id, 
-                                "task_title": str(row['task_name']).strip(), 
+                                "task_title": str(row.get('task_name', 'Manual Log')).strip(), 
                                 "bullet_text": clean_notes,
                                 "log_date": today.strftime(STORAGE_DATE_FORMAT),
                                 "task_links": str(row.get('task_url', '')),
@@ -352,13 +390,13 @@ with left_panel:
                             save_db(eod_df, EOD_FILE)
                             
                             if str(row.get('is_recurring', 'Yes')) == "No":
-                                df = df[df['task_id'] != row['task_id']]
+                                df = df[df['task_id'] != row.get('task_id')]
                             else:
                                 df.at[index, 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
                             
                             save_db(df, DB_FILE)
-                            if row['task_id'] in st.session_state.emails_sent_today:
-                                st.session_state.emails_sent_today.remove(row['task_id'])
+                            if row.get('task_id') in st.session_state.emails_sent_today:
+                                st.session_state.emails_sent_today.remove(row.get('task_id'))
                             st.rerun()
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
                         
@@ -470,15 +508,15 @@ with left_panel:
         # Next Day Priorities section
         auto_priorities = []
         for _, row in df.iterrows():
-            l_completed = parse_date_safely(row['last_completed'])
+            l_completed = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
             d_since = (today - l_completed).days
-            i_window = get_days_interval(row['frequency'])
+            i_window = get_days_interval(row.get('frequency', 'Daily'))
             n_due = l_completed + timedelta(days=i_window)
             
             if d_since >= i_window:
-                auto_priorities.append(f"• [ROLLOVER] {row['task_name']} (Overdue)")
+                auto_priorities.append(f"• [ROLLOVER] {row.get('task_name', 'Task')} (Overdue)")
             elif n_due == tomorrow:
-                auto_priorities.append(f"• [SCHEDULED] {row['task_name']} (Due Tomorrow)")
+                auto_priorities.append(f"• [SCHEDULED] {row.get('task_name', 'Task')} (Due Tomorrow)")
                 
         for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
             
@@ -602,7 +640,7 @@ with left_panel:
                         except Exception:
                             pass
 
-    # --- TAB 4: DATA CREATION FORMS (RE-ENGINEERED FOR MULTIPLE MEDIA / LINKS INPUT) ---
+    # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
@@ -610,7 +648,6 @@ with left_panel:
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
                 
-                # RE-ENGINEERED EXTENSIONS: Adding resource options right into creation form frame
                 bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
@@ -621,13 +658,11 @@ with left_panel:
                 submitted = st.form_submit_button("Save Routine")
                 
                 if submitted and new_name:
-                    # Parse multiple URLs text block into comma separated format strings
                     comma_links = ""
                     if bulk_urls_input.strip():
                         lines = [l.strip() for l in bulk_urls_input.split("\n") if l.strip()]
                         comma_links = ",".join(lines)
                     
-                    # Convert static media data to background storage strings
                     media_b64 = ""
                     if uploaded_task_media is not None:
                         try:
@@ -671,20 +706,20 @@ with left_panel:
         with m_task:
             for index, row in df.iterrows():
                 ec1, ec2, ec3 = st.columns([3, 1, 1])
-                current_task_date = parse_date_safely(row['last_completed'])
-                if st.session_state.editing_task_id == row['task_id']:
+                current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+                if st.session_state.editing_task_id == row.get('task_id'):
                     with ec1:
-                        edit_name = st.text_input("Name", value=row['task_name'], key=f"en_{row['task_id']}", label_visibility="collapsed")
-                        edit_desc = st.text_area("Desc", value=row['task_description'], key=f"ed_{row['task_id']}", label_visibility="collapsed")
+                        edit_name = st.text_input("Name", value=row.get('task_name', ''), key=f"en_{row.get('task_id')}", label_visibility="collapsed")
+                        edit_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"ed_{row.get('task_id')}", label_visibility="collapsed")
                         current_url_raw = row.get('task_url', '')
-                        edit_url = st.text_input("URL Link", value=str(current_url_raw) if pd.notna(current_url_raw) else "", key=f"eurl_{row['task_id']}")
+                        edit_url = st.text_input("URL Link", value=str(current_url_raw) if pd.notna(current_url_raw) else "", key=f"eurl_{row.get('task_id')}")
                     with ec2:
-                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row['frequency']), key=f"ef_{row['task_id']}", label_visibility="collapsed")
+                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
                         current_rec_val = str(row.get('is_recurring', 'Yes'))
-                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(current_rec_val if current_rec_val in ["Yes", "No"] else "Yes"), key=f"erec_{row['task_id']}")
-                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row['task_id']}", label_visibility="collapsed")
+                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(current_rec_val if current_rec_val in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}")
+                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row.get('task_id')}", label_visibility="collapsed")
                     with ec3:
-                        if st.button("💾", key=f"s_{row['task_id']}"):
+                        if st.button("💾", key=f"s_{row.get('task_id')}"):
                             df.at[index, 'task_name'] = edit_name
                             df.at[index, 'task_description'] = edit_desc
                             df.at[index, 'task_url'] = edit_url.strip()
@@ -697,18 +732,18 @@ with left_panel:
                 else:
                     with ec1:
                         rec_txt = "One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "Recurring"
-                        st.write(f"**{row['task_name']}** ({row['frequency']} — *{rec_txt}*)")
+                        st.write(f"**{row.get('task_name', 'Task')}** ({row.get('frequency', 'Daily')} — *{rec_txt}*)")
                         st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
                         current_url_val = str(row.get('task_url', '')).strip()
                         if current_url_val and current_url_val != "nan" and current_url_val != "":
                             st.caption(f"🔗 Link Data Saved")
                     with ec2:
-                        if st.button("✏️", key=f"em_{row['task_id']}"):
-                            st.session_state.editing_task_id = row['task_id']
+                        if st.button("✏️", key=f"em_{row.get('task_id']}"):
+                            st.session_state.editing_task_id = row.get('task_id')
                             st.rerun()
                     with ec3:
-                        if st.button("🗑️", key=f"d_{row['task_id']}"):
-                            df = df[df['task_id'] != row['task_id']]
+                        if st.button("🗑️", key=f"d_{row.get('task_id']}"):
+                            df = df[df['task_id'] != row.get('task_id')]
                             save_db(df, DB_FILE)
                             st.rerun()
                 st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
@@ -776,8 +811,8 @@ with right_panel:
     calendar_events = []
     
     for index, row in df.iterrows():
-        base_date = parse_date_safely(row['last_completed'])
-        target_span = get_days_interval(row['frequency'])
+        base_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+        target_span = get_days_interval(row.get('frequency', 'Daily'))
         next_due = base_date + timedelta(days=target_span)
         is_overdue = today >= next_due
         
@@ -785,7 +820,7 @@ with right_panel:
         prio_marker = "📌" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄"
         
         calendar_events.append({
-            "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
+            "title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{prio_marker} {row.get('task_name', 'Task')}",
             "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT),
             "backgroundColor": event_color, "borderColor": event_color, "allDay": True
         })
