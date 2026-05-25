@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import os
 import smtplib
+import base64
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from streamlit_calendar import calendar
@@ -131,6 +132,11 @@ st.markdown(
         .quick-copy-wrapper {
             margin-bottom: -12px;
         }
+        
+        /* Custom layout adjustments for nested screenshot boxes */
+        div[data-testid="stFileUploader"] {
+            padding-top: 5px;
+        }
     </style>
     """,
     unsafe_allow_html=True
@@ -168,35 +174,49 @@ def get_starter_tasks():
         ]
     }
 
+def verify_and_align_columns(df_obj, filename, fallback_cols):
+    updated = False
+    for col in fallback_cols:
+        if col not in df_obj.columns:
+            df_obj[col] = ""
+            updated = True
+    if updated:
+        df_obj.to_csv(filename, index=False)
+    return df_obj
+
 # Load/Initialize Databases
 if not os.path.exists(DB_FILE):
     df = pd.DataFrame(get_starter_tasks())
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    if "task_url" not in df.columns: df["task_url"] = ""
-    if "is_recurring" not in df.columns: df["is_recurring"] = "Yes"
-    df.to_csv(DB_FILE, index=False)
+    df = verify_and_align_columns(df, DB_FILE, ["task_url", "is_recurring"])
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
 
+# Target Schema updates for extra parameters
+REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64"]
+
 if not os.path.exists(EOD_FILE):
-    eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
+    eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     eod_df.to_csv(EOD_FILE, index=False)
 else:
     eod_df = pd.read_csv(EOD_FILE)
-    if "task_title" not in eod_df.columns: eod_df["task_title"] = "Manual Log"
-    if "log_date" not in eod_df.columns: eod_df["log_date"] = datetime.now().strftime(STORAGE_DATE_FORMAT)
-    eod_df.to_csv(EOD_FILE, index=False)
+    eod_df = verify_and_align_columns(eod_df, EOD_FILE, REQUIRED_LOG_COLUMNS)
     eod_df["task_title"] = eod_df["task_title"].fillna("Manual Log").astype(str)
     eod_df["bullet_text"] = eod_df["bullet_text"].fillna("").astype(str)
+    eod_df["task_links"] = eod_df["task_links"].fillna("").astype(str)
+    eod_df["screenshot_b64"] = eod_df["screenshot_b64"].fillna("").astype(str)
 
 if not os.path.exists(ARCHIVE_FILE):
-    archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
+    archive_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     archive_df.to_csv(ARCHIVE_FILE, index=False)
 else:
     archive_df = pd.read_csv(ARCHIVE_FILE)
+    archive_df = verify_and_align_columns(archive_df, ARCHIVE_FILE, REQUIRED_LOG_COLUMNS)
     archive_df["log_date"] = archive_df["log_date"].fillna(datetime.now().strftime(STORAGE_DATE_FORMAT)).astype(str)
+    archive_df["task_links"] = archive_df["task_links"].fillna("").astype(str)
+    archive_df["screenshot_b64"] = archive_df["screenshot_b64"].fillna("").astype(str)
 
 if not os.path.exists(NOTES_FILE):
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
@@ -252,7 +272,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
     except Exception as e:
         return False
 
-# Centered main screen title
+# Centered title
 st.markdown(
     "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
     unsafe_allow_html=True
@@ -293,7 +313,7 @@ if overdue_tasks_list:
     """
     components.html(js_notification_code, height=0, width=0)
 
-# Side-by-side split layout
+# Split Layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
@@ -310,7 +330,7 @@ with left_panel:
         "⚙️ Existing Task"
     ])
     
-    # --- TAB 1: PENDING TASKS & ALERTS ---
+    # --- TAB 1: PENDING TASKS & ALERTS (WITH MULTIPLE URLS & SCREENSHOT EXPANSION) ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         reminders_found = False
@@ -322,7 +342,9 @@ with left_panel:
             
             if days_since >= needed_days:
                 reminders_found = True
-                col_text, col_action = st.columns([1.5, 1.5])
+                
+                # Split display block cleanly
+                col_text, col_action = st.columns([1.4, 1.6])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.write(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
@@ -339,20 +361,45 @@ with left_panel:
                             st.session_state.emails_sent_today.append(row['task_id'])
                 
                 with col_action:
-                    col_input, col_btn = st.columns([2.2, 0.8], vertical_alignment="bottom")
+                    # Input Results Row
+                    col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
                     with col_input:
                         result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
+                    
+                    # NEW FEATURE: Expanders for extra attachments (screenshot file box + multiple URL text areas)
+                    with st.expander("➕ Attach Screenshots or Multiple Links"):
+                        uploaded_file = st.file_uploader("Upload Task Screenshot:", type=["png", "jpg", "jpeg"], key=f"img_{row['task_id']}")
+                        bulk_links_input = st.text_area("Paste Extra Task URLs (One URL per line):", placeholder="https://example1.com\nhttps://example2.com", key=f"urls_{row['task_id']}", height=80)
+                    
                     with col_btn:
                         if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
                             clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
+                            
+                            # Encode screenshot image file bytes to string if present
+                            img_b64_str = ""
+                            if uploaded_file is not None:
+                                try:
+                                    img_bytes = uploaded_file.read()
+                                    img_b64_str = base64.b64encode(img_bytes).decode('utf-8')
+                                except Exception:
+                                    img_b64_str = ""
+                            
+                            # Clean bulk links input block
+                            formatted_links_string = ""
+                            if bulk_links_input.strip():
+                                lines = [line.strip() for line in bulk_links_input.split("\n") if line.strip()]
+                                formatted_links_string = ",".join(lines)
                             
                             new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                             new_log_row = {
                                 "log_id": new_log_id, 
                                 "task_title": str(row['task_name']).strip(), 
                                 "bullet_text": clean_notes,
-                                "log_date": today.strftime(STORAGE_DATE_FORMAT)
+                                "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                                "task_links": formatted_links_string,
+                                "screenshot_b64": img_b64_str
                             }
+                            
                             eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                             save_db(eod_df, EOD_FILE)
                             
@@ -370,12 +417,10 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER WITH INDIVIDUAL QUICK COPIERS ---
+    # --- TAB 2: EOD REPORT LOG BUILDER (WITH SCREENSHOT & LINK INTEGRATION) ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
-        
-        # UPGRADE: Separating the information into individual components to activate dedicated clipboard buttons
         st.markdown("<div class='quick-copy-wrapper'>", unsafe_allow_html=True)
         st.code("Bryan Reyes", language=None)
         st.markdown("</div><div class='quick-copy-wrapper'>", unsafe_allow_html=True)
@@ -383,12 +428,11 @@ with left_panel:
         st.markdown("</div><div class='quick-copy-wrapper'>", unsafe_allow_html=True)
         st.code("Marketing & Reporting VA", language=None)
         st.markdown("</div>", unsafe_allow_html=True)
-        
         st.markdown("---")
         
         eod_log_col, prio_log_col = st.columns(2)
         with eod_log_col:
-            st.markdown("**Add Completed Tasks:**")
+            st.markdown("**Add Completed Tasks Manually:**")
             with st.form("eod_add_form", clear_on_submit=True):
                 manual_title = st.text_input("Project / Task Title:", value="Manual Log")
                 log_input = st.text_input("Action Detail / Note:")
@@ -399,7 +443,9 @@ with left_panel:
                         "log_id": new_log_id, 
                         "task_title": manual_title.strip() if manual_title.strip() else "Manual Log", 
                         "bullet_text": log_input.strip(),
-                        "log_date": today.strftime(STORAGE_DATE_FORMAT)
+                        "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                        "task_links": "",
+                        "screenshot_b64": ""
                     }
                     eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                     save_db(eod_df, EOD_FILE)
@@ -419,36 +465,57 @@ with left_panel:
 
         st.markdown("---")
 
-        emp_header = (
-            f"Date: {today.strftime(DATE_FORMAT)}\n"
-            f"----------------------------------------\n"
-            f"Completed Tasks & Actions Log:\n"
-        )
+        emp_header = f"Date: {today.strftime(DATE_FORMAT)}\n----------------------------------------\nCompleted Tasks & Actions Log:\n"
         
+        # Format compiled EOD summary presentation script
         if not eod_df.empty:
             grouped_lines = []
             seen_titles = {}
+            
             for _, row in eod_df.iterrows():
                 title = row['task_title']
                 note = row['bullet_text']
+                extra_links_str = str(row.get('task_links', ''))
+                
                 if title not in seen_titles:
                     seen_titles[title] = []
-                seen_titles[title].append(note)
+                seen_titles[title].append((note, extra_links_str))
             
-            for title, notes in seen_titles.items():
+            for title, entries in seen_titles.items():
                 if title == "Manual Log":
-                    for note in notes: grouped_lines.append(f"• {note}")
+                    for note, _ in entries:
+                        grouped_lines.append(f"• {note}")
                 else:
                     grouped_lines.append(f"• {title}:")
-                    for note in notes: grouped_lines.append(f"  - {note}")
+                    for note, extra_links_str in entries:
+                        grouped_lines.append(f"  - {note}")
+                        # NEW: Embed multi-line custom task URLs beneath the notes inside code output
+                        if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
+                            url_list = extra_links_str.split(",")
+                            for single_url in url_list:
+                                grouped_lines.append(f"    🔗 {single_url}")
                         
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else:
             compiled_report = f"{emp_header}• (No work logged yet today.)"
             
-        st.markdown("**EOD Summary:**")
+        st.markdown("**EOD Summary Block:**")
         st.code(compiled_report, language=None)
         
+        # Render visual thumbnails of active uploaded screenshots in staging environment
+        has_images_today = False
+        for _, row in eod_df.iterrows():
+            if str(row.get('screenshot_b64', '')).strip():
+                if not has_images_today:
+                    st.markdown("**📸 Staged Screenshots Attached Today:**")
+                    has_images_today = True
+                try:
+                    img_data = base64.b64decode(row['screenshot_b64'])
+                    st.image(img_data, caption=f"Screenshot for: {row['task_title']}", width=250)
+                except Exception:
+                    pass
+
+        # Next Day Priorities section
         auto_priorities = []
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row['last_completed'])
@@ -475,7 +542,7 @@ with left_panel:
             if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
                 archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
                 save_db(archive_df, ARCHIVE_FILE)
-                eod_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
+                eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
                 save_db(eod_df, EOD_FILE)
                 st.rerun()
         with col_clear_p:
@@ -484,7 +551,7 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH MEDIA DISPLAY SUPPORT) ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         
@@ -494,11 +561,11 @@ with left_panel:
         
         with col_reset:
             with st.expander("🗑️ Clear History Logs"):
-                st.caption("Permanently clear your master historic archive file (`eod_master_archive.csv`). This won't affect active or pending tasks.")
+                st.caption("Permanently clear your master historic archive file. This won't affect active or pending tasks.")
                 confirm_history_wipe = st.checkbox("Confirm permanent delete of all history rows", key="hist_wipe_check")
                 if confirm_history_wipe:
                     if st.button("💥 Wipe History File", use_container_width=True):
-                        archive_df = pd.DataFrame(columns=["log_id", "task_title", "bullet_text", "log_date"])
+                        archive_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
                         save_db(archive_df, ARCHIVE_FILE)
                         st.success("History database cleared!")
                         st.rerun()
@@ -530,27 +597,49 @@ with left_panel:
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 
                 seen_history_blocks = {}
+                history_images = [] # Collect images to display directly below the log snippet
+                
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title = row['task_title']
                     note = row['bullet_text']
+                    extra_links_str = str(row.get('task_links', ''))
+                    img_str = str(row.get('screenshot_b64', '')).strip()
+                    
                     date_key = f"📅 Date: {f_date_str}"
                     if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
                     if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
-                    seen_history_blocks[date_key][title].append(note)
+                    seen_history_blocks[date_key][title].append((note, extra_links_str))
+                    
+                    if img_str:
+                        history_images.append((f_date_str, title, img_str))
                 
                 output_lines = []
                 for date_lbl, titles_dict in seen_history_blocks.items():
                     output_lines.append(date_lbl)
                     output_lines.append("-" * 40)
-                    for title, notes in titles_dict.items():
+                    for title, entries in titles_dict.items():
                         if title == "Manual Log":
-                            for note in notes: output_lines.append(f"• {note}")
+                            for note, _ in entries: output_lines.append(f"• {note}")
                         else:
                             output_lines.append(f"• {title}:")
-                            for note in notes: output_lines.append(f"  - {note}")
+                            for note, extra_links_str in entries:
+                                output_lines.append(f"  - {note}")
+                                if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
+                                    for lk in extra_links_str.split(","):
+                                        output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
                 st.code("\n".join(output_lines), language=None)
+                
+                # Render archived images matching filtered selections
+                if history_images:
+                    st.markdown("### 📸 Archived Screenshots for Selected Period:")
+                    for f_date, t_title, b64_data in history_images:
+                        try:
+                            dec_data = base64.b64decode(b64_data)
+                            st.image(dec_data, caption=f"[{f_date}] - {t_title}", width=300)
+                        except Exception:
+                            pass
 
     # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
@@ -708,7 +797,7 @@ with right_panel:
         
         calendar_events.append({
             "title": f"⚠️ Due: {row['task_name']}" if is_overdue else f"{prio_marker} {row['task_name']}",
-            "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_FORMAT if 'STORAGE_FORMAT' in locals() else STORAGE_DATE_FORMAT),
+            "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT),
             "backgroundColor": event_color, "borderColor": event_color, "allDay": True
         })
         
