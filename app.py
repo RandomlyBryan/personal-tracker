@@ -132,11 +132,6 @@ st.markdown(
         .quick-copy-wrapper {
             margin-bottom: -12px;
         }
-        
-        /* Custom layout adjustments for nested screenshot boxes */
-        div[data-testid="stFileUploader"] {
-            padding-top: 5px;
-        }
     </style>
     """,
     unsafe_allow_html=True
@@ -171,7 +166,8 @@ def get_starter_tasks():
             (datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), 
             (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), 
             (datetime.now() - timedelta(days=32)).strftime(STORAGE_DATE_FORMAT)
-        ]
+        ],
+        "task_screenshot_b64": ["", "", ""]
     }
 
 def verify_and_align_columns(df_obj, filename, fallback_cols):
@@ -190,11 +186,11 @@ if not os.path.exists(DB_FILE):
     df.to_csv(DB_FILE, index=False)
 else:
     df = pd.read_csv(DB_FILE)
-    df = verify_and_align_columns(df, DB_FILE, ["task_url", "is_recurring"])
+    df = verify_and_align_columns(df, DB_FILE, ["task_url", "is_recurring", "task_screenshot_b64"])
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
+    df["task_screenshot_b64"] = df["task_screenshot_b64"].fillna("").astype(str)
 
-# Target Schema updates for extra parameters
 REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64"]
 
 if not os.path.exists(EOD_FILE):
@@ -272,52 +268,11 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
     except Exception as e:
         return False
 
-# Centered title
-st.markdown(
-    "<h1 style='text-align: center; font-family: Georgia, serif;'>🗓️ Personal Tracker Dashboard</h1>", 
-    unsafe_allow_html=True
-)
-st.markdown("---")
-
-today = datetime.now().date()
-tomorrow = today + timedelta(days=1)
-
-# --- CALCULATE OVERDUE TASKS FOR PUSH ALERTS ---
-overdue_tasks_list = []
-for _, row in df.iterrows():
-    last_comp_date = parse_date_safely(row['last_completed'])
-    if (today - last_comp_date).days >= get_days_interval(row['frequency']):
-        overdue_tasks_list.append(row['task_name'])
-
-if overdue_tasks_list:
-    alert_summary = f"You have {len(overdue_tasks_list)} items requiring update: " + ", ".join(overdue_tasks_list[:2])
-    if len(overdue_tasks_list) > 2:
-        alert_summary += f" and {len(overdue_tasks_list) - 2} more."
-
-    js_notification_code = f"""
-    <script>
-    function triggerDesktopPush() {{
-        if (!("Notification" in window)) return;
-        if (Notification.permission === "granted") {{
-            new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
-        }} else if (Notification.permission !== "denied") {{
-            Notification.requestPermission().then(function (permission) {{
-                if (permission === "granted") {{
-                    new Notification("⏰ Overdue Routines Alert", {{ body: "{alert_summary}", icon: "https://cdn-icons-png.flaticon.com/512/599/599502.png" }});
-                }}
-            }});
-        }}
-    }}
-    setTimeout(triggerDesktopPush, 1000);
-    </script>
-    """
-    components.html(js_notification_code, height=0, width=0)
-
-# Split Layout
+# Side-by-side split layout
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 # ------------------------------------------
-# LEFT PANEL: COMPACT TABBED WORKSPACE WITH AUTOMATED EOD ENGINE
+# LEFT PANEL: COMPACT TABBED WORKSPACE
 # ------------------------------------------
 with left_panel:
     st.header("📋 Command Center")
@@ -330,7 +285,7 @@ with left_panel:
         "⚙️ Existing Task"
     ])
     
-    # --- TAB 1: PENDING TASKS & ALERTS (WITH MULTIPLE URLS & SCREENSHOT EXPANSION) ---
+    # --- TAB 1: PENDING TASKS & ALERTS (RENDER PRE-SAVED MEDIA/LINKS) ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         reminders_found = False
@@ -343,16 +298,30 @@ with left_panel:
             if days_since >= needed_days:
                 reminders_found = True
                 
-                # Split display block cleanly
-                col_text, col_action = st.columns([1.4, 1.6])
+                col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.write(f"**{row['task_name']}** ({row['frequency']} — *{type_label}*)")
+                    
                     with st.expander("📄 View Instructions & Links"):
                         st.write(row['task_description'])
-                        task_link = str(row.get('task_url', '')).strip()
-                        if task_link and task_link != "nan" and task_link != "":
-                            st.link_button("🔗 Open Direct Link", url=task_link, use_container_width=True)
+                        
+                        # Render pre-saved resource links dynamically as launching buttons
+                        saved_links_str = str(row.get('task_url', '')).strip()
+                        if saved_links_str and saved_links_str != "nan":
+                            # Split by comma if multiple links exist
+                            for url_item in saved_links_str.split(","):
+                                if url_item.strip():
+                                    st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
+                        
+                        # Render pre-saved instruction screenshots if available
+                        saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
+                        if saved_img_b64 and saved_img_b64 != "nan":
+                            try:
+                                dec_task_img = base64.b64decode(saved_img_b64)
+                                st.image(dec_task_img, caption="Reference Screenshot", width=220)
+                            except Exception:
+                                pass
                     
                     if row['task_id'] not in st.session_state.emails_sent_today:
                         t_desc = row['task_description'] if pd.notna(row['task_description']) else "No instructions provided."
@@ -361,43 +330,22 @@ with left_panel:
                             st.session_state.emails_sent_today.append(row['task_id'])
                 
                 with col_action:
-                    # Input Results Row
-                    col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
+                    col_input, col_btn = st.columns([2.2, 0.8], vertical_alignment="bottom")
                     with col_input:
                         result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row['task_id']}")
-                    
-                    # NEW FEATURE: Expanders for extra attachments (screenshot file box + multiple URL text areas)
-                    with st.expander("➕ Attach Screenshots or Multiple Links"):
-                        uploaded_file = st.file_uploader("Upload Task Screenshot:", type=["png", "jpg", "jpeg"], key=f"img_{row['task_id']}")
-                        bulk_links_input = st.text_area("Paste Extra Task URLs (One URL per line):", placeholder="https://example1.com\nhttps://example2.com", key=f"urls_{row['task_id']}", height=80)
-                    
                     with col_btn:
                         if st.button("Done", key=f"remind_btn_{row['task_id']}", use_container_width=True):
                             clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                             
-                            # Encode screenshot image file bytes to string if present
-                            img_b64_str = ""
-                            if uploaded_file is not None:
-                                try:
-                                    img_bytes = uploaded_file.read()
-                                    img_b64_str = base64.b64encode(img_bytes).decode('utf-8')
-                                except Exception:
-                                    img_b64_str = ""
-                            
-                            # Clean bulk links input block
-                            formatted_links_string = ""
-                            if bulk_links_input.strip():
-                                lines = [line.strip() for line in bulk_links_input.split("\n") if line.strip()]
-                                formatted_links_string = ",".join(lines)
-                            
+                            # Automatically pass down saved parameters into today's logged summary rows
                             new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                             new_log_row = {
                                 "log_id": new_log_id, 
                                 "task_title": str(row['task_name']).strip(), 
                                 "bullet_text": clean_notes,
                                 "log_date": today.strftime(STORAGE_DATE_FORMAT),
-                                "task_links": formatted_links_string,
-                                "screenshot_b64": img_b64_str
+                                "task_links": str(row.get('task_url', '')),
+                                "screenshot_b64": str(row.get('task_screenshot_b64', ''))
                             }
                             
                             eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
@@ -417,7 +365,7 @@ with left_panel:
         if not reminders_found:
             st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER (WITH SCREENSHOT & LINK INTEGRATION) ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -467,7 +415,7 @@ with left_panel:
 
         emp_header = f"Date: {today.strftime(DATE_FORMAT)}\n----------------------------------------\nCompleted Tasks & Actions Log:\n"
         
-        # Format compiled EOD summary presentation script
+        active_links_stager = []
         if not eod_df.empty:
             grouped_lines = []
             seen_titles = {}
@@ -489,11 +437,11 @@ with left_panel:
                     grouped_lines.append(f"• {title}:")
                     for note, extra_links_str in entries:
                         grouped_lines.append(f"  - {note}")
-                        # NEW: Embed multi-line custom task URLs beneath the notes inside code output
                         if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
                             url_list = extra_links_str.split(",")
                             for single_url in url_list:
                                 grouped_lines.append(f"    🔗 {single_url}")
+                                active_links_stager.append((title, single_url))
                         
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else:
@@ -502,7 +450,11 @@ with left_panel:
         st.markdown("**EOD Summary Block:**")
         st.code(compiled_report, language=None)
         
-        # Render visual thumbnails of active uploaded screenshots in staging environment
+        if active_links_stager:
+            st.markdown("🔗 **Quick-Open Staged Task Links:**")
+            for task_title, link_url in active_links_stager:
+                st.link_button(f"Open: {task_title} ({link_url[:40]}...)", url=link_url, use_container_width=True)
+        
         has_images_today = False
         for _, row in eod_df.iterrows():
             if str(row.get('screenshot_b64', '')).strip():
@@ -551,7 +503,7 @@ with left_panel:
                 save_db(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (WITH MEDIA DISPLAY SUPPORT) ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         
@@ -597,7 +549,8 @@ with left_panel:
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 
                 seen_history_blocks = {}
-                history_images = [] # Collect images to display directly below the log snippet
+                history_images = []
+                archive_links_stager = []
                 
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
@@ -610,6 +563,10 @@ with left_panel:
                     if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
                     if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append((note, extra_links_str))
+                    
+                    if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
+                        for lk in extra_links_str.split(","):
+                            archive_links_stager.append((f_date_str, title, lk))
                     
                     if img_str:
                         history_images.append((f_date_str, title, img_str))
@@ -631,7 +588,11 @@ with left_panel:
                     output_lines.append("\n")
                 st.code("\n".join(output_lines), language=None)
                 
-                # Render archived images matching filtered selections
+                if archive_links_stager:
+                    st.markdown("🔗 **Quick-Open Archived Task Links:**")
+                    for f_date, title, lk in archive_links_stager:
+                        st.link_button(f"[{f_date}] Launch: {title} ({lk[:40]}...)", url=lk, use_container_width=True)
+                
                 if history_images:
                     st.markdown("### 📸 Archived Screenshots for Selected Period:")
                     for f_date, t_title, b64_data in history_images:
@@ -641,22 +602,50 @@ with left_panel:
                         except Exception:
                             pass
 
-    # --- TAB 4: DATA CREATION FORMS ---
+    # --- TAB 4: DATA CREATION FORMS (RE-ENGINEERED FOR MULTIPLE MEDIA / LINKS INPUT) ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions")
-                new_url = st.text_input("Task URL Link (Optional)")
+                
+                # RE-ENGINEERED EXTENSIONS: Adding resource options right into creation form frame
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
+                uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
+                
                 col_f1, col_f2 = st.columns(2)
                 with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
                 with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
                 start_date = st.date_input("Routine Start Date", value=today)
                 submitted = st.form_submit_button("Save Routine")
+                
                 if submitted and new_name:
+                    # Parse multiple URLs text block into comma separated format strings
+                    comma_links = ""
+                    if bulk_urls_input.strip():
+                        lines = [l.strip() for l in bulk_urls_input.split("\n") if l.strip()]
+                        comma_links = ",".join(lines)
+                    
+                    # Convert static media data to background storage strings
+                    media_b64 = ""
+                    if uploaded_task_media is not None:
+                        try:
+                            media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8')
+                        except Exception:
+                            media_b64 = ""
+                    
                     new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    new_row = {"task_id": new_id, "task_name": new_name, "task_description": new_desc if new_desc else "No instructions.", "task_url": new_url.strip(), "frequency": new_freq, "is_recurring": recurrence_setting, "last_completed": start_date.strftime(STORAGE_DATE_FORMAT)}
+                    new_row = {
+                        "task_id": new_id, 
+                        "task_name": new_name, 
+                        "task_description": new_desc if new_desc else "No instructions.", 
+                        "task_url": comma_links, 
+                        "frequency": new_freq, 
+                        "is_recurring": recurrence_setting, 
+                        "last_completed": start_date.strftime(STORAGE_DATE_FORMAT),
+                        "task_screenshot_b64": media_b64
+                    }
                     df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
                     save_db(df, DB_FILE)
                     st.rerun()
@@ -712,7 +701,7 @@ with left_panel:
                         st.caption(f"Baseline Date: {current_task_date.strftime(DATE_FORMAT)}")
                         current_url_val = str(row.get('task_url', '')).strip()
                         if current_url_val and current_url_val != "nan" and current_url_val != "":
-                            st.caption(f"🔗 Link: {current_url_val}")
+                            st.caption(f"🔗 Link Data Saved")
                     with ec2:
                         if st.button("✏️", key=f"em_{row['task_id']}"):
                             st.session_state.editing_task_id = row['task_id']
