@@ -64,7 +64,7 @@ st.markdown(
             box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* TARGETED LOOK FOR REPORT TEXT AREAS (Prevents impacting Quick Copy) */
+        /* TARGETED LOOK FOR REPORT TEXT AREAS */
         div.report-box div[data-baseweb="textarea"] textarea[disabled] {
             color: #38BDF8 !important; 
             background-color: #090B0E !important;
@@ -72,7 +72,7 @@ st.markdown(
             opacity: 1 !important;
         }
         
-        /* CLEAN INLINE QUICK COPY CONTAINERS (Brings back standard copy clips without shadows) */
+        /* CLEAN INLINE QUICK COPY CONTAINERS */
         div.clean-copy code {
             background-color: transparent !important;
             border: none !important;
@@ -359,12 +359,11 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER (FIXED QUICK COPY BUTTONS) ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
         
-        # FIXED UPGRADE: Isolated container wrapper allows native clipboard copy button icons to re-appear cleanly!
         st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
         st.code("Bryan Reyes", language=None)
         st.code("work.bryanc@gmail.com", language=None)
@@ -418,10 +417,25 @@ with left_panel:
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary Block:**")
-        # FIXED UPGRADE: Wrapped inside an isolated css class 'report-box' to apply highlight removal without breaking Quick Copy above
         st.markdown("<div class='report-box'>", unsafe_allow_html=True)
         st.text_area(label="EOD Report Copy Output", value=compiled_report, height=160, disabled=True, label_visibility="collapsed")
         st.markdown("</div>", unsafe_allow_html=True)
+        
+        # UPGRADE: Add dedicated clipboard copy mechanism for the text area text payload
+        escaped_eod = compiled_report.replace('`', '\\`').replace('$', '\\$')
+        js_eod_copy = f"""
+        <script>
+        function runEodCopy() {{
+            navigator.clipboard.writeText(`{escaped_eod}`);
+            const btn = window.parent.document.querySelectorAll('button')[0];
+        }}
+        </script>
+        """
+        col_c1, _ = st.columns([1, 3])
+        with col_c1:
+            if st.button("📋 Copy EOD Block", key="manual_eod_copy_btn", use_container_width=True):
+                components.html(f"{js_eod_copy}<script>runEodCopy();</script>", height=0, width=0)
+                st.toast("Copied EOD Summary to clipboard!")
         
         if active_links_stager:
             st.markdown("🔗 **Quick-Open Staged Task Links:**")
@@ -449,6 +463,21 @@ with left_panel:
         st.markdown("<div class='report-box'>", unsafe_allow_html=True)
         st.text_area(label="Priorities Copy Output", value=compiled_prio_report, height=140, disabled=True, label_visibility="collapsed")
         st.markdown("</div>", unsafe_allow_html=True)
+        
+        # UPGRADE: Add dedicated clipboard copy mechanism for the priorities text payload
+        escaped_prio = compiled_prio_report.replace('`', '\\`').replace('$', '\\$')
+        js_prio_copy = f"""
+        <script>
+        function runPrioCopy() {{
+            navigator.clipboard.writeText(`{escaped_prio}`);
+        }}
+        </script>
+        """
+        col_c2, _ = st.columns([1, 3])
+        with col_c2:
+            if st.button("📋 Copy Priorities", key="manual_prio_copy_btn", use_container_width=True):
+                components.html(f"{js_prio_copy}<script>runPrioCopy();</script>", height=0, width=0)
+                st.toast("Copied Priorities to clipboard!")
         
         st.markdown(" ")
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
@@ -518,6 +547,21 @@ with left_panel:
                 st.text_area(label="Archive Log View", value="\n".join(output_lines), height=240, disabled=True, key="archive_txt_area")
                 st.markdown("</div>", unsafe_allow_html=True)
                 
+                # UPGRADE: Add dedicated clipboard copy mechanism for the historical archive view payload
+                escaped_archive = "\n".join(output_lines).replace('`', '\\`').replace('$', '\\$')
+                js_archive_copy = f"""
+                <script>
+                function runArchiveCopy() {{
+                    navigator.clipboard.writeText(`{escaped_archive}`);
+                }}
+                </script>
+                """
+                col_c3, _ = st.columns([1, 3])
+                with col_c3:
+                    if st.button("📋 Copy History Block", key="manual_archive_copy_btn", use_container_width=True):
+                        components.html(f"{js_archive_copy}<script>runArchiveCopy();</script>", height=0, width=0)
+                        st.toast("Copied Archive Log to clipboard!")
+                
                 if archive_links_stager:
                     st.markdown("🔗 **Quick-Open Archived Task Links:**")
                     for fd, tl, lk in archive_links_stager: st.link_button(f"[{fd}] Launch: {tl} ({lk[:40]}...)", url=lk, use_container_width=True)
@@ -570,7 +614,7 @@ with left_panel:
                 note_date = st.date_input("Event Date", value=today)
                 if st.form_submit_button("Pin to Calendar") and note_title:
                     new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    notes_df = pd.concat([notes_df, pd.DataFrame([{"note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
+                    notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
