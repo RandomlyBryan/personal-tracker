@@ -63,6 +63,15 @@ st.markdown(
             border-color: #0284C7 !important;
             box-shadow: 0 0 4px #0284C7 !important;
         }
+        
+        /* Premium Look for read-only Text Areas (Removes the highlight-like styles) */
+        div[data-baseweb="textarea"] textarea[disabled] {
+            color: #38BDF8 !important; /* Clean Electric Blue Text */
+            background-color: #090B0E !important;
+            -webkit-text-fill-color: #38BDF8 !important;
+            opacity: 1 !important;
+        }
+        
         button[kind="secondary"] {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -123,9 +132,12 @@ ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
-# --- PERSISTENT GITHUB AUTO-PUSH THEME ENGINE ---
+# Initialize state memory frames
+if "editing_task_id" not in st.session_state: st.session_state.editing_task_id = None
+if "editing_note_id" not in st.session_state: st.session_state.editing_note_id = None
+if "emails_sent_today" not in st.session_state: st.session_state.emails_sent_today = []
+
 def push_to_github(filename):
-    """Commits and pushes files automatically straight into your GitHub repository database layer."""
     try:
         cfg = st.secrets["github"]
         token = cfg["token"]
@@ -135,7 +147,6 @@ def push_to_github(filename):
         url = f"https://api.github.com/repos/{repo}/contents/{filename}"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
         
-        # Check if the file already exists on GitHub to grab its matching SHA key hash identifier
         res = requests.get(url, headers=headers, params={"ref": branch})
         sha = res.json().get("sha") if res.status_code == 200 else None
         
@@ -147,17 +158,10 @@ def push_to_github(filename):
             "content": encoded_content,
             "branch": branch
         }
-        if sha:
-            payload["sha"] = sha
-            
+        if sha: payload["sha"] = sha
         requests.put(url, headers=headers, json=payload)
     except Exception:
-        pass  # Fails silently if offline or token configuration isn't set up yet
-
-# Initialize configurations
-if "editing_task_id" not in st.session_state: st.session_state.editing_task_id = None
-if "editing_note_id" not in st.session_state: st.session_state.editing_note_id = None
-if "emails_sent_today" not in st.session_state: st.session_state.emails_sent_today = []
+        pass
 
 def get_starter_tasks():
     return {
@@ -182,7 +186,7 @@ def verify_and_align_columns(df_obj, filename, fallback_cols):
         push_to_github(filename)
     return df_obj
 
-# Load or generate foundational tables
+# Load or generate functional storage structures
 if not os.path.exists(DB_FILE):
     df = pd.DataFrame(get_starter_tasks())
     df.to_csv(DB_FILE, index=False)
@@ -304,7 +308,6 @@ if overdue_tasks_list:
     """
     components.html(js_notification_code, height=0, width=0)
 
-# Screen Columns Split Engine
 left_panel, right_panel = st.columns([1, 1], gap="large")
 
 with left_panel:
@@ -413,7 +416,9 @@ with left_panel:
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary Block:**")
-        st.code(compiled_report, language=None)
+        # UPGRADE: Swapped to a clean read-only text_area to completely erase the glitchy syntax highlights
+        st.text_area(label="EOD Report Copy Output", value=compiled_report, height=160, disabled=True, label_visibility="collapsed")
+        
         if active_links_stager:
             st.markdown("🔗 **Quick-Open Staged Task Links:**")
             for t_title, link_url in active_links_stager: st.link_button(f"Open: {t_title} ({link_url[:40]}...)", url=link_url, use_container_width=True)
@@ -435,8 +440,10 @@ with left_panel:
             elif n_due == tomorrow: auto_priorities.append(f"• [SCHEDULED] {row.get('task_name', 'Task')} (Due Tomorrow)")
         for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
+        
         st.markdown("**Next Day Priorities:**")
-        st.code(compiled_prio_report, language=None)
+        # UPGRADE: Swapped to a clean read-only text_area to clear syntax colors from agenda outputs
+        st.text_area(label="Priorities Copy Output", value=compiled_prio_report, height=140, disabled=True, label_visibility="collapsed")
         
         st.markdown(" ")
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
@@ -500,7 +507,10 @@ with left_panel:
                                 if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
-                st.code("\n".join(output_lines), language=None)
+                
+                # UPGRADE: Swapped historical archive window to clean read-only text area layout
+                st.text_area(label="Archive Log View", value="\n".join(output_lines), height=240, disabled=True, key="archive_txt_area")
+                
                 if archive_links_stager:
                     st.markdown("🔗 **Quick-Open Archived Task Links:**")
                     for fd, tl, lk in archive_links_stager: st.link_button(f"[{fd}] Launch: {tl} ({lk[:40]}...)", url=lk, use_container_width=True)
@@ -536,7 +546,7 @@ with left_panel:
                 note_date = st.date_input("Event Date", value=today)
                 if st.form_submit_button("Pin to Calendar") and note_title:
                     new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    notes_df = pd.concat([notes_df, pd.DataFrame([{"note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
+                    notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
@@ -554,7 +564,7 @@ with left_panel:
                         edit_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"eurl_{row.get('task_id')}")
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
-                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}")
+                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row.get('task_id')}", label_visibility="collapsed")
                     with ec3:
                         if st.button("💾", key=f"s_{row.get('task_id')}"):
@@ -572,7 +582,6 @@ with left_panel:
                     with ec3:
                         if st.button("🗑️", key=f"d_{row.get('task_id')}"): df = df[df['task_id'] != row.get('task_id')]; save_and_push(df, DB_FILE); st.rerun()
                 st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
-        # (Calendar Note maintenance structures unchanged but updated with cloud-save handlers)
         with m_note:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
             else:
