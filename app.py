@@ -317,7 +317,15 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 
 with left_panel:
     st.header("📋 Command Center")
-    tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
+    
+    # REORDERED TAB DEPLOYMENT HOOK
+    tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
+        "🚨 Pending Tasks", 
+        "➕ New Task", 
+        "⚙️ Existing Task",
+        "📝 EOD Report", 
+        "📊 Task History"
+    ])
     
     # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
@@ -382,8 +390,147 @@ with left_panel:
                             st.rerun()
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
-            
-    # --- TAB 2: EOD REPORT LOG BUILDER ---
+
+    # --- TAB 2: NEW TASK (CREATION FORMS) ---
+    with tab_add:
+        sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
+        with sub_tab_task:
+            with st.form("new_task_form", clear_on_submit=True):
+                new_name = st.text_input("Task Title")
+                new_desc = st.text_area("Instructions")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
+                uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
+                
+                col_f1, col_f2, col_f3 = st.columns(3)
+                with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
+                with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
+                with col_f3: selected_star_lbl = st.selectbox("Assign Priority Star Level:", STAR_OPTIONS, index=2)
+                
+                start_date = st.date_input("Routine Start Date", value=today)
+                if st.form_submit_button("Save Routine") and new_name:
+                    comma_links = ",".join([l.strip() for l in bulk_urls_input.split("\n") if l.strip()]) if bulk_urls_input.strip() else ""
+                    media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8') if uploaded_task_media is not None else ""
+                    new_id = int(df['task_id'].max() + 1) if not df.empty else 1
+                    
+                    numeric_prio_weight = STAR_OPTIONS.index(selected_star_lbl) + 1
+                    
+                    new_task_row = {
+                        "task_id": new_id, 
+                        "task_name": new_name, 
+                        "task_description": new_desc if new_desc else "No instructions.", 
+                        "task_url": comma_links, 
+                        "frequency": new_freq, 
+                        "is_recurring": recurrence_setting, 
+                        "last_completed": start_date.strftime(STORAGE_DATE_FORMAT), 
+                        "task_screenshot_b64": media_b64,
+                        "task_priority": numeric_prio_weight
+                    }
+                    df = pd.concat([df, pd.DataFrame([new_task_row])], ignore_index=True)
+                    save_and_push(df, DB_FILE)
+                    st.rerun()
+                    
+        with sub_tab_note:
+            with st.form("new_note_form", clear_on_submit=True):
+                note_title = st.text_input("Meeting / Event Title")
+                note_details = st.text_area("Agenda Notes")
+                note_date = st.date_input("Event Date", value=today)
+                if st.form_submit_button("Pin to Calendar") and note_title:
+                    new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
+                    notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
+                    save_and_push(notes_df, NOTES_FILE)
+                    st.rerun()
+
+    # --- TAB 3: EXISTING TASK (MAINTENANCE LISTS) ---
+    with tab_manage:
+        st.subheader("Edit & Delete Settings")
+        m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
+        with m_task:
+            maintenance_df = df.copy()
+            if "task_priority" in maintenance_df.columns:
+                maintenance_df["task_priority"] = pd.to_numeric(maintenance_df["task_priority"]).fillna(3).astype(int)
+                maintenance_df = maintenance_df.sort_values(by="task_priority", ascending=False)
+                
+            for index, row in maintenance_df.iterrows():
+                ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
+                current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+                orig_master_idx = df[df['task_id'] == row.get('task_id')].index[0]
+                
+                if st.session_state.editing_task_id == row.get('task_id'):
+                    with ec1:
+                        edit_name = st.text_input("Name", value=row.get('task_name', ''), key=f"en_{row.get('task_id')}", label_visibility="collapsed")
+                        edit_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"ed_{row.get('task_id')}", label_visibility="collapsed")
+                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"eurl_{row.get('task_id')}")
+                    with ec2:
+                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
+                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
+                        current_prio_val = int(row.get('task_priority', 3))
+                        fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
+                        edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{row.get('task_id')}")
+                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row.get('task_id')}", label_visibility="collapsed")
+                    with ec3:
+                        if st.button("💾", key=f"s_{row.get('task_id')}"):
+                            df.at[orig_master_idx, 'task_name'] = edit_name
+                            df.at[orig_master_idx, 'task_description'] = edit_desc
+                            df.at[orig_master_idx, 'task_url'] = edit_url.strip()
+                            df.at[orig_master_idx, 'frequency'] = edit_freq
+                            df.at[orig_master_idx, 'is_recurring'] = edit_rec
+                            df.at[orig_master_idx, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
+                            df.at[orig_master_idx, 'task_priority'] = STAR_OPTIONS.index(edit_star_lbl) + 1
+                            
+                            save_and_push(df, DB_FILE)
+                            st.session_state.editing_task_id = None
+                            st.rerun()
+                else:
+                    with ec1:
+                        current_stars_count = int(row.get('task_priority', 3))
+                        star_display = "⭐" * current_stars_count
+                        st.write(f"**{row.get('task_name', 'Task')}** — <span class='stars-container'>{star_display}</span>", unsafe_allow_html=True)
+                        st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{'One-Time' if str(row.get('is_recurring', 'Yes')) == 'No' else 'Recurring'}*")
+                        if str(row.get('task_url', '')).strip() and str(row.get('task_url', '')) != "nan": st.caption("🔗 Link Data Saved")
+                    with ec2:
+                        if st.button("✏️", key=f"em_{row.get('task_id')}"): st.session_state.editing_task_id = row.get('task_id'); st.rerun()
+                    with ec3:
+                        if st.button("🗑️", key=f"d_{row.get('task_id')}"): 
+                            df = df.drop(orig_master_idx)
+                            save_and_push(df, DB_FILE)
+                            st.rerun()
+                st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+                
+        with m_note:
+            if notes_df.empty: st.info("No temporary calendar notes pinned.")
+            else:
+                for index, row in notes_df.iterrows():
+                    nc1, nc2, nc3 = st.columns([3, 1, 1])
+                    if st.session_state.editing_note_id == row['note_id']:
+                        with nc1:
+                            en_title = st.text_input("Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
+                            en_details = st.text_area("Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
+                        with nc2: en_date = st.date_input("Date", value=parse_date_safely(row['event_date']), key=f"endate_{row['note_id']}", label_visibility="collapsed")
+                        with nc3:
+                            if st.button("💾", key=f"s_note_{row['note_id']}"):
+                                notes_df.at[index, 'title'] = en_title; notes_df.at[index, 'details'] = en_details; notes_df.at[index, 'event_date'] = en_date.strftime(STORAGE_DATE_FORMAT)
+                                save_and_push(notes_df, NOTES_FILE); st.session_state.editing_note_id = None; st.rerun()
+                    else:
+                        with nc1:
+                            st.write(f"📌 **{parse_date_safely(row['event_date']).strftime(DATE_FORMAT)}** — {row['title']}")
+                            if row['details']:
+                                with st.expander("📄 View Details"): st.write(row['details'])
+                        with nc2:
+                            if st.button("✏️", key=f"em_note_{row['note_id']}"): st.session_state.editing_note_id = row['note_id']; st.rerun()
+                        with nc3:
+                            if st.button("🗑️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
+                    st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+        with m_danger:
+            st.markdown("<span style='color:#EF4444; font-weight:bold;'>🚨 CRITICAL ZONE: Factory Reset</span>", unsafe_allow_html=True)
+            if st.text_input("Type RESET ALL to unlock confirmation:", placeholder="RESET ALL") == "RESET ALL":
+                if st.button("💥 WIPE REPOSITORIES", use_container_width=True):
+                    df = pd.DataFrame(get_starter_tasks()); save_and_push(df, DB_FILE)
+                    for target_csv in [NOTES_FILE, EOD_FILE, PRIORITIES_FILE, ARCHIVE_FILE]:
+                        if os.path.exists(target_csv): os.remove(target_csv)
+                    st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today = None, None, []
+                    st.rerun()
+
+    # --- TAB 4: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -483,7 +630,7 @@ with left_panel:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (SCREENSHOT LAYOUT DROPPED) ---
+    # --- TAB 5: TASK HISTORY ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
@@ -516,7 +663,6 @@ with left_panel:
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 seen_history_blocks = {}
                 
-                # REFACTOR: Completely dropped history_images data allocation loops from data collection pipelines
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title, date_key = row['task_title'], f"📅 Date: {f_date_str}"
@@ -552,147 +698,6 @@ with left_panel:
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
-                
-                # REFACTOR: Deleted '📸 Archived Screenshots for Selected Period' widget module display layout code block completely
-
-    # --- TAB 4: DATA CREATION FORMS ---
-    with tab_add:
-        sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
-        with sub_tab_task:
-            with st.form("new_task_form", clear_on_submit=True):
-                new_name = st.text_input("Task Title")
-                new_desc = st.text_area("Instructions")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
-                uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
-                
-                col_f1, col_f2, col_f3 = st.columns(3)
-                with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
-                with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
-                with col_f3: selected_star_lbl = st.selectbox("Assign Priority Star Level:", STAR_OPTIONS, index=2)
-                
-                start_date = st.date_input("Routine Start Date", value=today)
-                if st.form_submit_button("Save Routine") and new_name:
-                    comma_links = ",".join([l.strip() for l in bulk_urls_input.split("\n") if l.strip()]) if bulk_urls_input.strip() else ""
-                    media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8') if uploaded_task_media is not None else ""
-                    new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    
-                    numeric_prio_weight = STAR_OPTIONS.index(selected_star_lbl) + 1
-                    
-                    new_task_row = {
-                        "task_id": new_id, 
-                        "task_name": new_name, 
-                        "task_description": new_desc if new_desc else "No instructions.", 
-                        "task_url": comma_links, 
-                        "frequency": new_freq, 
-                        "is_recurring": recurrence_setting, 
-                        "last_completed": start_date.strftime(STORAGE_DATE_FORMAT), 
-                        "task_screenshot_b64": media_b64,
-                        "task_priority": numeric_prio_weight
-                    }
-                    df = pd.concat([df, pd.DataFrame([new_task_row])], ignore_index=True)
-                    save_and_push(df, DB_FILE)
-                    st.rerun()
-                    
-        with sub_tab_note:
-            with st.form("new_note_form", clear_on_submit=True):
-                note_title = st.text_input("Meeting / Event Title")
-                note_details = st.text_area("Agenda Notes")
-                note_date = st.date_input("Event Date", value=today)
-                if st.form_submit_button("Pin to Calendar") and note_title:
-                    new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
-                    save_and_push(notes_df, NOTES_FILE)
-                    st.rerun()
-
-    # --- TAB 5: MAINTENANCE LISTS ---
-    with tab_manage:
-        st.subheader("Edit & Delete Settings")
-        m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
-        with m_task:
-            maintenance_df = df.copy()
-            if "task_priority" in maintenance_df.columns:
-                maintenance_df["task_priority"] = pd.to_numeric(maintenance_df["task_priority"]).fillna(3).astype(int)
-                maintenance_df = maintenance_df.sort_values(by="task_priority", ascending=False)
-                
-            for index, row in maintenance_df.iterrows():
-                ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
-                current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
-                orig_master_idx = df[df['task_id'] == row.get('task_id')].index[0]
-                
-                if st.session_state.editing_task_id == row.get('task_id'):
-                    with ec1:
-                        edit_name = st.text_input("Name", value=row.get('task_name', ''), key=f"en_{row.get('task_id')}", label_visibility="collapsed")
-                        edit_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"ed_{row.get('task_id')}", label_visibility="collapsed")
-                        edit_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"eurl_{row.get('task_id')}")
-                    with ec2:
-                        edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
-                        edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
-                        current_prio_val = int(row.get('task_priority', 3))
-                        fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
-                        edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{row.get('task_id')}")
-                        edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row.get('task_id')}", label_visibility="collapsed")
-                    with ec3:
-                        if st.button("💾", key=f"s_{row.get('task_id')}"):
-                            df.at[orig_master_idx, 'task_name'] = edit_name
-                            df.at[orig_master_idx, 'task_description'] = edit_desc
-                            df.at[orig_master_idx, 'task_url'] = edit_url.strip()
-                            df.at[orig_master_idx, 'frequency'] = edit_freq
-                            df.at[orig_master_idx, 'is_recurring'] = edit_rec
-                            df.at[orig_master_idx, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
-                            df.at[orig_master_idx, 'task_priority'] = STAR_OPTIONS.index(edit_star_lbl) + 1
-                            
-                            save_and_push(df, DB_FILE)
-                            st.session_state.editing_task_id = None
-                            st.rerun()
-                else:
-                    with ec1:
-                        current_stars_count = int(row.get('task_priority', 3))
-                        star_display = "⭐" * current_stars_count
-                        st.write(f"**{row.get('task_name', 'Task')}** — <span class='stars-container'>{star_display}</span>", unsafe_allow_html=True)
-                        st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{'One-Time' if str(row.get('is_recurring', 'Yes')) == 'No' else 'Recurring'}*")
-                        if str(row.get('task_url', '')).strip() and str(row.get('task_url', '')) != "nan": st.caption("🔗 Link Data Saved")
-                    with ec2:
-                        if st.button("✏️", key=f"em_{row.get('task_id')}"): st.session_state.editing_task_id = row.get('task_id'); st.rerun()
-                    with ec3:
-                        if st.button("🗑️", key=f"d_{row.get('task_id')}"): 
-                            df = df.drop(orig_master_idx)
-                            save_and_push(df, DB_FILE)
-                            st.rerun()
-                st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
-                
-        with m_note:
-            if notes_df.empty: st.info("No temporary calendar notes pinned.")
-            else:
-                for index, row in notes_df.iterrows():
-                    nc1, nc2, nc3 = st.columns([3, 1, 1])
-                    if st.session_state.editing_note_id == row['note_id']:
-                        with nc1:
-                            en_title = st.text_input("Title", value=row['title'], key=f"ent_{row['note_id']}", label_visibility="collapsed")
-                            en_details = st.text_area("Details", value=row['details'], key=f"end_{row['note_id']}", label_visibility="collapsed")
-                        with nc2: en_date = st.date_input("Date", value=parse_date_safely(row['event_date']), key=f"endate_{row['note_id']}", label_visibility="collapsed")
-                        with nc3:
-                            if st.button("💾", key=f"s_note_{row['note_id']}"):
-                                notes_df.at[index, 'title'] = en_title; notes_df.at[index, 'details'] = en_details; notes_df.at[index, 'event_date'] = en_date.strftime(STORAGE_DATE_FORMAT)
-                                save_and_push(notes_df, NOTES_FILE); st.session_state.editing_note_id = None; st.rerun()
-                    else:
-                        with nc1:
-                            st.write(f"📌 **{parse_date_safely(row['event_date']).strftime(DATE_FORMAT)}** — {row['title']}")
-                            if row['details']:
-                                with st.expander("📄 View Details"): st.write(row['details'])
-                        with nc2:
-                            if st.button("✏️", key=f"em_note_{row['note_id']}"): st.session_state.editing_note_id = row['note_id']; st.rerun()
-                        with nc3:
-                            if st.button("🗑️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
-                    st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
-        with m_danger:
-            st.markdown("<span style='color:#EF4444; font-weight:bold;'>🚨 CRITICAL ZONE: Factory Reset</span>", unsafe_allow_html=True)
-            if st.text_input("Type RESET ALL to unlock confirmation:", placeholder="RESET ALL") == "RESET ALL":
-                if st.button("💥 WIPE REPOSITORIES", use_container_width=True):
-                    df = pd.DataFrame(get_starter_tasks()); save_and_push(df, DB_FILE)
-                    for target_csv in [NOTES_FILE, EOD_FILE, PRIORITIES_FILE, ARCHIVE_FILE]:
-                        if os.path.exists(target_csv): os.remove(target_csv)
-                    st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today = None, None, []
-                    st.rerun()
 
 with right_panel:
     st.header("📅 Monthly Overview")
