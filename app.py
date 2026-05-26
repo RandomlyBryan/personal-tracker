@@ -318,7 +318,7 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 
 with left_panel:
     st.header("📋 Command Center")
-    tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Archive Viewer", "➕ New Task", "⚙️ Existing Task"])
+    tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
     
     # --- TAB 1: PENDING TASKS (SORTED BY HIGHEST STAR COUNT) ---
     with tab_alerts:
