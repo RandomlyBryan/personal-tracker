@@ -156,7 +156,7 @@ ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
-# UPGRADE: Visual option strings switched to an elegant star configuration mapping
+# Visual option strings switched to an elegant star configuration mapping
 STAR_OPTIONS = [
     "⭐",
     "⭐⭐",
@@ -320,11 +320,10 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: PENDING TASKS (SORTED BY HIGHEST STAR COUNT) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
-        # Sort routines dynamically from 5 stars down to 1 star
         active_pending_df = df.copy()
         if "task_priority" in active_pending_df.columns:
             active_pending_df["task_priority"] = pd.to_numeric(active_pending_df["task_priority"]).fillna(3).astype(int)
@@ -337,14 +336,12 @@ with left_panel:
             if days_since >= get_days_interval(row.get('frequency', 'Daily')):
                 reminders_found = True
                 
-                # UPGRADE: Formulate golden star layout string for header tracking
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
                 col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    # Render sleek gold star layout inline with the item name
                     st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
                     st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                     
@@ -477,11 +474,18 @@ with left_panel:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
+    # --- TAB 3: MASTER ARCHIVE TRACKER HISTORY (WITH TXT DOWNLOAD HOOKS) ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
-        range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
-        if archive_df.empty: st.info("Your master archive file is currently empty.")
+        
+        # UPGRADE Layout structure: Splitting filter selector and download button side-by-side
+        filter_col, download_col = st.columns([2.5, 1.5], vertical_alignment="bottom")
+        
+        with filter_col:
+            range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
+            
+        if archive_df.empty: 
+            st.info("Your master archive file is currently empty.")
         else:
             archive_df['parsed_date'] = archive_df['log_date'].apply(parse_date_safely)
             filter_start, filter_end = today, today
@@ -497,19 +501,20 @@ with left_panel:
                 with col_date2: filter_end = st.date_input("End Date Target:", value=today)
             
             filtered_archive = archive_df.copy() if range_selection == "All Logs" else archive_df[(archive_df['parsed_date'] >= filter_start) & (archive_df['parsed_date'] <= filter_end)]
-            if filtered_archive.empty: st.warning("No archived rows match selected window filter.")
+            
+            if filtered_archive.empty: 
+                st.warning("No archived rows match selected window filter.")
             else:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} actions logged)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
-                seen_history_blocks, history_images, archive_links_stager = {}, [], []
+                seen_history_blocks, history_images = {}, []
+                
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title, date_key = row['task_title'], f"📅 Date: {f_date_str}"
                     if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
                     if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append((row['bullet_text'], str(row.get('task_links', ''))))
-                    if str(row.get('task_links', '')).strip() and str(row.get('task_links', '')) != "nan":
-                        for lk in str(row['task_links']).split(","): archive_links_stager.append((f_date_str, title, lk))
                     if str(row.get('screenshot_b64', '')).strip(): history_images.append((f_date_str, title, str(row['screenshot_b64'])))
                 
                 output_lines = []
@@ -526,20 +531,31 @@ with left_panel:
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
                 
+                compiled_text_history = "\n".join(output_lines)
+                
+                # UPGRADE: Native Streamlit download handler button placed next to selectors
+                with download_col:
+                    st.download_button(
+                        label="📥 Download History (.txt)",
+                        data=compiled_text_history,
+                        file_name=f"task_history_export_{range_selection.lower().replace(' ', '_')}.txt",
+                        mime="text/plain",
+                        use_container_width=True
+                    )
+                
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
-                st.code("\n".join(output_lines), language=None)
+                st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                if archive_links_stager:
-                    st.markdown("🔗 **Quick-Open Archived Task Links:**")
-                    for fd, tl, lk in archive_links_stager: st.link_button(f"[{fd}] Launch: {tl} ({lk[:40]}...)", url=lk, use_container_width=True)
+                # REMOVED: Section linking arrays completely cleaned out from here to keep layout minimal
+                
                 if history_images:
                     st.markdown("### 📸 Archived Screenshots for Selected Period:")
                     for fd, tt, b64 in history_images:
                         try: st.image(base64.b64decode(b64), caption=f"[{fd}] - {tt}", width=300)
                         except Exception: pass
 
-    # --- TAB 4: DATA CREATION FORMS (UPGRADED WITH STAR VALUE FIELDS) ---
+    # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
@@ -552,7 +568,6 @@ with left_panel:
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
                 with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
-                # UPGRADE: Selection matches visual star rating tiers
                 with col_f3: selected_star_lbl = st.selectbox("Assign Priority Star Level:", STAR_OPTIONS, index=2)
                 
                 start_date = st.date_input("Routine Start Date", value=today)
@@ -589,7 +604,7 @@ with left_panel:
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 5: MAINTENANCE LISTS (UPGRADED WITH HIGH-TO-LOW TRACKING & STAR DROPDOWNS) ---
+    # --- TAB 5: MAINTENANCE LISTS ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
         m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
@@ -597,7 +612,6 @@ with left_panel:
             maintenance_df = df.copy()
             if "task_priority" in maintenance_df.columns:
                 maintenance_df["task_priority"] = pd.to_numeric(maintenance_df["task_priority"]).fillna(3).astype(int)
-                # UPGRADE: Keeps the existing task maintenance view strictly sorted from highest priority down to lowest
                 maintenance_df = maintenance_df.sort_values(by="task_priority", ascending=False)
                 
             for index, row in maintenance_df.iterrows():
@@ -613,8 +627,6 @@ with left_panel:
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
                         edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
-                        
-                        # UPGRADE: Dropdown edit fields sync perfectly to the star tiers array mapping index
                         current_prio_val = int(row.get('task_priority', 3))
                         fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
                         edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{row.get('task_id')}")
