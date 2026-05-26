@@ -64,7 +64,7 @@ st.markdown(
             box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* CLEAN INLINE QUICK COPY CONTAINERS (Brings back standard copy clips without shadows) */
+        /* CLEAN INLINE QUICK COPY CONTAINERS */
         div.clean-copy code {
             background-color: transparent !important;
             border: none !important;
@@ -80,7 +80,7 @@ st.markdown(
             padding: 2px 10px !important;
         }
         
-        /* NEW STYLING ENGINE FOR THE COMPACT SUMMARY CODE MODULES */
+        /* SUMMARY CODE MODULES */
         div.clean-report-block [data-testid="stCodeBlock"] {
             background-color: #090B0E !important;
             border: 1px solid #2D3748 !important;
@@ -403,7 +403,8 @@ with left_panel:
 
         st.markdown("---")
         emp_header = f"Date: {today.strftime(DATE_FORMAT)}\n----------------------------------------\nCompleted Tasks & Actions Log:\n"
-        active_links_stager = []
+        
+        # LINK STAGER REMOVED: Deleted URL compilation loop to drop the Quick-Open block completely
         if not eod_df.empty:
             grouped_lines = []
             seen_titles = {}
@@ -421,19 +422,15 @@ with left_panel:
                         if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
                             for single_url in extra_links_str.split(","):
                                 grouped_lines.append(f"    🔗 {single_url}")
-                                active_links_stager.append((title, single_url))
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary Block:**")
-        # NATIVE UPGRADE: Swapped to custom clean-report-block wrappers using st.code. Zero highlights, zero browser blocker glitches!
         st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
         st.code(compiled_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
         
-        if active_links_stager:
-            st.markdown("🔗 **Quick-Open Staged Task Links:**")
-            for t_title, link_url in active_links_stager: st.link_button(f"Open: {t_title} ({link_url[:40]}...)", url=link_url, use_container_width=True)
+        # QUICK-OPEN LAYOUT REMOVED HERE
         
         has_images_today = False
         for _, row in eod_df.iterrows():
@@ -454,7 +451,6 @@ with left_panel:
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
         
         st.markdown("**Next Day Priorities:**")
-        # NATIVE UPGRADE: Swapped to custom clean-report-block wrappers using st.code. Zero highlights, zero browser blocker glitches!
         st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
         st.code(compiled_prio_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -523,7 +519,6 @@ with left_panel:
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
                 
-                # NATIVE UPGRADE: Historic archive log section converted to the new zero-glitch text layout
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code("\n".join(output_lines), language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
