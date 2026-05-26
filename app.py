@@ -158,11 +158,11 @@ STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
 # UPGRADE: Visual option strings switched to an elegant star configuration mapping
 STAR_OPTIONS = [
-    "⭐ (Priority 1 - Lowest)",
-    "⭐⭐ (Priority 2)",
-    "⭐⭐⭐ (Priority 3)",
-    "⭐⭐⭐⭐ (Priority 4)",
-    "⭐⭐⭐⭐⭐ (Priority 5 - Highest)"
+    "⭐",
+    "⭐⭐",
+    "⭐⭐⭐",
+    "⭐⭐⭐⭐",
+    "⭐⭐⭐⭐⭐"
 ]
 
 if "editing_task_id" not in st.session_state: st.session_state.editing_task_id = None
@@ -322,7 +322,7 @@ with left_panel:
     
     # --- TAB 1: PENDING TASKS (SORTED BY HIGHEST STAR COUNT) ---
     with tab_alerts:
-        st.subheader("Items Due For Update")
+        st.subheader("Pending Tasks")
         
         # Sort routines dynamically from 5 stars down to 1 star
         active_pending_df = df.copy()
@@ -479,7 +479,7 @@ with left_panel:
 
     # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
-        st.subheader("📊 Completed Work History Archive")
+        st.subheader("📊 Completed Task History")
         range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
         if archive_df.empty: st.info("Your master archive file is currently empty.")
         else:
