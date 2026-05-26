@@ -1,1 +1,17 @@
 task_id,task_name,task_description,task_url,frequency,is_recurring,last_completed,task_screenshot_b64
+1,Set up email campaign for New Books for Summer,"Books to include
+
+9780008710330 
+9780571379330 
+9780571383580 
+9780571393145 
+9780571395347 
+9781035021048 
+9781529937299 
+9781787335370 
+9781804994832
+
+The A/B test for this campaign will be comparing descriptions of books vs no descriptions (Like the Page to Screen campaign). You can clone the Page to Screen campaign to get the right formats. Please use Gemini (or an AI model of your choosing!) to write short descriptions of the books like last time. No need to include a price.
+
+Please link the email banner and call to action to this page: 
+",https://www.awesomebooks.com/new-books,Daily,No,2026-05-25,
