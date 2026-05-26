@@ -319,7 +319,7 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: PENDING TASKS (AUTO-EXPANDING TEXT AREA FIX) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -358,7 +358,6 @@ with left_panel:
                 with col_action:
                     col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
                     with col_input:
-                        # FIX: Replaced broken data_editor with an auto-expanding text_area that grows dynamically as you type
                         result_notes = st.text_area(
                             label="Action Notes / Results:",
                             placeholder="Type data updates here...",
@@ -384,7 +383,7 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER (LINK-FREE SUMMARY & PREFIX-FREE PRIORITIES) ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -432,7 +431,6 @@ with left_panel:
                 else:
                     grouped_lines.append(f"• {title}:")
                     for note in entries:
-                        # FIX: Keeps summary block strictly link-free
                         grouped_lines.append(f"  - {note}")
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
@@ -455,7 +453,6 @@ with left_panel:
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
             n_due = l_completed + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
-            # FIX: Dropped [ROLLOVER] and [SCHEDULED] overview tags completely for clean bullet formatting
             if (today - l_completed).days >= get_days_interval(row.get('frequency', 'Daily')): 
                 auto_priorities.append(f"• {row.get('task_name', 'Task')}")
             elif n_due == tomorrow: 
@@ -486,7 +483,7 @@ with left_panel:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW (SCREENSHOT LAYOUT DROPPED) ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
@@ -517,15 +514,15 @@ with left_panel:
             else:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} actions logged)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
-                seen_history_blocks, history_images = {}, []
+                seen_history_blocks = {}
                 
+                # REFACTOR: Completely dropped history_images data allocation loops from data collection pipelines
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title, date_key = row['task_title'], f"📅 Date: {f_date_str}"
                     if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
                     if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append((row['bullet_text'], str(row.get('task_links', ''))))
-                    if str(row.get('screenshot_b64', '')).strip(): history_images.append((f_date_str, title, str(row['screenshot_b64'])))
                 
                 output_lines = []
                 for date_lbl, titles_dict in seen_history_blocks.items():
@@ -556,11 +553,7 @@ with left_panel:
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                if history_images:
-                    st.markdown("### 📸 Archived Screenshots for Selected Period:")
-                    for fd, tt, b64 in history_images:
-                        try: st.image(base64.b64decode(b64), caption=f"[{fd}] - {tt}", width=300)
-                        except Exception: pass
+                # REFACTOR: Deleted '📸 Archived Screenshots for Selected Period' widget module display layout code block completely
 
     # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
@@ -651,7 +644,6 @@ with left_panel:
                             save_and_push(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
-                # FIX: Rectified brackets inside layout evaluation loop
                 else:
                     with ec1:
                         current_stars_count = int(row.get('task_priority', 3))
