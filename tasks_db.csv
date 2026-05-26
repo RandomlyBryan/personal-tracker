@@ -14,7 +14,7 @@ task_id,task_name,task_description,task_url,frequency,is_recurring,last_complete
 The A/B test for this campaign will be comparing descriptions of books vs no descriptions (Like the Page to Screen campaign). You can clone the Page to Screen campaign to get the right formats. Please use Gemini (or an AI model of your choosing!) to write short descriptions of the books like last time. No need to include a price.
 
 Please link the email banner and call to action to this page: 
-",https://www.awesomebooks.com/new-books,Daily,No,2026-05-25,,Medium
+",https://www.awesomebooks.com/new-books,Daily,No,2026-05-25,,High
 2,Set up email campaign for Holiday Bargains,"9780241542361
 9780099558781
 9780241989524 
