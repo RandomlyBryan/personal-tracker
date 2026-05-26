@@ -63,12 +63,31 @@ st.markdown(
             border-color: #0284C7 !important;
             box-shadow: 0 0 4px #0284C7 !important;
         }
-        div[data-baseweb="textarea"] textarea[disabled] {
-            color: #38BDF8 !important;
+        
+        /* TARGETED LOOK FOR REPORT TEXT AREAS (Prevents impacting Quick Copy) */
+        div.report-box div[data-baseweb="textarea"] textarea[disabled] {
+            color: #38BDF8 !important; 
             background-color: #090B0E !important;
             -webkit-text-fill-color: #38BDF8 !important;
             opacity: 1 !important;
         }
+        
+        /* CLEAN INLINE QUICK COPY CONTAINERS (Brings back standard copy clips without shadows) */
+        div.clean-copy code {
+            background-color: transparent !important;
+            border: none !important;
+            color: #38BDF8 !important;
+            font-size: 1.1em !important;
+            font-family: 'Georgia', serif !important;
+        }
+        div.clean-copy [data-testid="stCodeBlock"] {
+            background-color: #161920 !important;
+            border: 1px solid #2D3748 !important;
+            border-radius: 6px;
+            margin-bottom: 6px !important;
+            padding: 2px 10px !important;
+        }
+        
         button[kind="secondary"] {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -106,17 +125,7 @@ st.markdown(
             background-color: #161920 !important;
             border: 1px solid #232936 !important;
         }
-        code {
-            background-color: #090B0E !important;
-            color: #38BDF8 !important;
-            border: 1px solid #1E293B !important;
-            font-family: monospace !important;
-        }
-        .quick-copy-wrapper {
-            margin-bottom: -12px;
-        }
         
-        /* Premium custom badge stylings for priority levels */
         .priority-high {
             color: #EF4444 !important;
             font-weight: bold;
@@ -183,14 +192,13 @@ def get_starter_tasks():
         "is_recurring": ["Yes", "Yes", "Yes"],
         "last_completed": [(datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), (datetime.now() - timedelta(days=32)).strftime(STORAGE_DATE_FORMAT)],
         "task_screenshot_b64": ["", "", ""],
-        "task_priority": ["High", "Medium", "Low"] # UPGRADE: Added fallback baseline priorities column array
+        "task_priority": ["High", "Medium", "Low"]
     }
 
 def verify_and_align_columns(df_obj, filename, fallback_cols):
     updated = False
     for col in fallback_cols:
         if col not in df_obj.columns:
-            # If priority column is missing, assign a baseline standard "Medium" default
             df_obj[col] = "Medium" if col == "task_priority" else ""
             updated = True
     if updated:
@@ -296,14 +304,9 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Archive Viewer", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: PENDING TASKS & ALERTS (UPGRADED WITH LIVE SORTING ENGINE) ---
     with tab_alerts:
         st.subheader("Items Due For Update")
-        
-        # Build priority mapper sorting weight frame
         priority_weights = {"High": 1, "Medium": 2, "Low": 3}
-        
-        # Pull copy frame, clear null values, map weight indexes, and execute ascending priority sort layout
         active_pending_df = df.copy()
         active_pending_df["weight"] = active_pending_df["task_priority"].map(priority_weights).fillna(2)
         active_pending_df = active_pending_df.sort_values(by="weight", ascending=True)
@@ -314,8 +317,6 @@ with left_panel:
             days_since = (today - last_comp_date).days
             if days_since >= get_days_interval(row.get('frequency', 'Daily')):
                 reminders_found = True
-                
-                # Assign visual styling markers matching priority flags
                 prio_val = row.get('task_priority', 'Medium')
                 if prio_val == "High": prio_badge, style_cls = "🔴 HIGH", "priority-high"
                 elif prio_val == "Low": prio_badge, style_cls = "🟢 LOW", "priority-low"
@@ -324,7 +325,6 @@ with left_panel:
                 col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    # Render high-contrast custom priority indicator strings inline with title text labels
                     st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='{style_cls}'>[{prio_badge}]</span>", unsafe_allow_html=True)
                     st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                     
@@ -350,7 +350,6 @@ with left_panel:
                             eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                             save_and_push(eod_df, EOD_FILE)
                             
-                            # Safely find and update the matching entry inside primary data repository frame
                             orig_idx = df[df['task_id'] == row.get('task_id')].index
                             if not orig_idx.empty:
                                 if str(row.get('is_recurring', 'Yes')) == "No": df = df.drop(orig_idx)
@@ -360,14 +359,18 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER ---
+    # --- TAB 2: EOD REPORT LOG BUILDER (FIXED QUICK COPY BUTTONS) ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
-        st.markdown("<div class='quick-copy-wrapper'><code class='stCode'>Bryan Reyes</code></div>", unsafe_allow_html=True)
-        st.markdown("<div class='quick-copy-wrapper'><code class='stCode'>work.bryanc@gmail.com</code></div>", unsafe_allow_html=True)
-        st.markdown("<div class='quick-copy-wrapper'><code class='stCode'>Marketing & Reporting VA</code></div>", unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # FIXED UPGRADE: Isolated container wrapper allows native clipboard copy button icons to re-appear cleanly!
+        st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+        st.code("Bryan Reyes", language=None)
+        st.code("work.bryanc@gmail.com", language=None)
+        st.code("Marketing & Reporting VA", language=None)
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("---")
         
         eod_log_col, prio_log_col = st.columns(2)
         with eod_log_col:
@@ -415,7 +418,10 @@ with left_panel:
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary Block:**")
+        # FIXED UPGRADE: Wrapped inside an isolated css class 'report-box' to apply highlight removal without breaking Quick Copy above
+        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
         st.text_area(label="EOD Report Copy Output", value=compiled_report, height=160, disabled=True, label_visibility="collapsed")
+        st.markdown("</div>", unsafe_allow_html=True)
         
         if active_links_stager:
             st.markdown("🔗 **Quick-Open Staged Task Links:**")
@@ -438,8 +444,11 @@ with left_panel:
             elif n_due == tomorrow: auto_priorities.append(f"• [SCHEDULED] {row.get('task_name', 'Task')} (Due Tomorrow)")
         for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
+        
         st.markdown("**Next Day Priorities:**")
+        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
         st.text_area(label="Priorities Copy Output", value=compiled_prio_report, height=140, disabled=True, label_visibility="collapsed")
+        st.markdown("</div>", unsafe_allow_html=True)
         
         st.markdown(" ")
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
@@ -504,7 +513,11 @@ with left_panel:
                                 if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
+                
+                st.markdown("<div class='report-box'>", unsafe_allow_html=True)
                 st.text_area(label="Archive Log View", value="\n".join(output_lines), height=240, disabled=True, key="archive_txt_area")
+                st.markdown("</div>", unsafe_allow_html=True)
+                
                 if archive_links_stager:
                     st.markdown("🔗 **Quick-Open Archived Task Links:**")
                     for fd, tl, lk in archive_links_stager: st.link_button(f"[{fd}] Launch: {tl} ({lk[:40]}...)", url=lk, use_container_width=True)
@@ -514,7 +527,7 @@ with left_panel:
                         try: st.image(base64.b64decode(b64), caption=f"[{fd}] - {tt}", width=300)
                         except Exception: pass
 
-    # --- TAB 4: DATA CREATION FORMS (UPGRADED WITH PRIORITY FLAG ASSIGNMENT) ---
+    # --- TAB 4: DATA CREATION FORMS ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
@@ -527,7 +540,6 @@ with left_panel:
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
                 with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
-                # UPGRADE: Added creation selector drop box frame
                 with col_f3: selected_prio_flag = st.selectbox("Assign Priority Flag Level:", ["High", "Medium", "Low"], index=1)
                 
                 start_date = st.date_input("Routine Start Date", value=today)
@@ -562,7 +574,7 @@ with left_panel:
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 5: MAINTENANCE LISTS (UPGRADED WITH PRIORITY EDIT CONTROLS) ---
+    # --- TAB 5: MAINTENANCE LISTS & FACTORY RESET ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
         m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
@@ -578,7 +590,6 @@ with left_panel:
                     with ec2:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
                         edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
-                        # UPGRADE: Added maintenance priority modifier dropdown box column link frame
                         prio_list = ["High", "Medium", "Low"]
                         current_prio_txt = row.get('task_priority', 'Medium')
                         prio_idx = prio_list.index(current_prio_txt) if current_prio_txt in prio_list else 1
