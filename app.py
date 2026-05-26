@@ -64,15 +64,7 @@ st.markdown(
             box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* TARGETED LOOK FOR REPORT TEXT AREAS */
-        div.report-box div[data-baseweb="textarea"] textarea[disabled] {
-            color: #38BDF8 !important; 
-            background-color: #090B0E !important;
-            -webkit-text-fill-color: #38BDF8 !important;
-            opacity: 1 !important;
-        }
-        
-        /* CLEAN INLINE QUICK COPY CONTAINERS */
+        /* CLEAN INLINE QUICK COPY CONTAINERS (Brings back standard copy clips without shadows) */
         div.clean-copy code {
             background-color: transparent !important;
             border: none !important;
@@ -86,6 +78,23 @@ st.markdown(
             border-radius: 6px;
             margin-bottom: 6px !important;
             padding: 2px 10px !important;
+        }
+        
+        /* NEW STYLING ENGINE FOR THE COMPACT SUMMARY CODE MODULES */
+        div.clean-report-block [data-testid="stCodeBlock"] {
+            background-color: #090B0E !important;
+            border: 1px solid #2D3748 !important;
+            border-radius: 6px;
+            padding: 8px 12px !important;
+        }
+        div.clean-report-block code {
+            background-color: transparent !important;
+            border: none !important;
+            color: #38BDF8 !important;
+            font-family: 'Georgia', serif !important;
+            font-size: 1.1em !important;
+            line-height: 1.5 !important;
+            white-space: pre-wrap !important;
         }
         
         button[kind="secondary"] {
@@ -417,25 +426,10 @@ with left_panel:
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
         st.markdown("**EOD Summary Block:**")
-        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
-        st.text_area(label="EOD Report Copy Output", value=compiled_report, height=160, disabled=True, label_visibility="collapsed")
+        # NATIVE UPGRADE: Swapped to custom clean-report-block wrappers using st.code. Zero highlights, zero browser blocker glitches!
+        st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
+        st.code(compiled_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
-        
-        # UPGRADE: Add dedicated clipboard copy mechanism for the text area text payload
-        escaped_eod = compiled_report.replace('`', '\\`').replace('$', '\\$')
-        js_eod_copy = f"""
-        <script>
-        function runEodCopy() {{
-            navigator.clipboard.writeText(`{escaped_eod}`);
-            const btn = window.parent.document.querySelectorAll('button')[0];
-        }}
-        </script>
-        """
-        col_c1, _ = st.columns([1, 3])
-        with col_c1:
-            if st.button("📋 Copy EOD Block", key="manual_eod_copy_btn", use_container_width=True):
-                components.html(f"{js_eod_copy}<script>runEodCopy();</script>", height=0, width=0)
-                st.toast("Copied EOD Summary to clipboard!")
         
         if active_links_stager:
             st.markdown("🔗 **Quick-Open Staged Task Links:**")
@@ -460,24 +454,10 @@ with left_panel:
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
         
         st.markdown("**Next Day Priorities:**")
-        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
-        st.text_area(label="Priorities Copy Output", value=compiled_prio_report, height=140, disabled=True, label_visibility="collapsed")
+        # NATIVE UPGRADE: Swapped to custom clean-report-block wrappers using st.code. Zero highlights, zero browser blocker glitches!
+        st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
+        st.code(compiled_prio_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
-        
-        # UPGRADE: Add dedicated clipboard copy mechanism for the priorities text payload
-        escaped_prio = compiled_prio_report.replace('`', '\\`').replace('$', '\\$')
-        js_prio_copy = f"""
-        <script>
-        function runPrioCopy() {{
-            navigator.clipboard.writeText(`{escaped_prio}`);
-        }}
-        </script>
-        """
-        col_c2, _ = st.columns([1, 3])
-        with col_c2:
-            if st.button("📋 Copy Priorities", key="manual_prio_copy_btn", use_container_width=True):
-                components.html(f"{js_prio_copy}<script>runPrioCopy();</script>", height=0, width=0)
-                st.toast("Copied Priorities to clipboard!")
         
         st.markdown(" ")
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
@@ -543,24 +523,10 @@ with left_panel:
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
                 
-                st.markdown("<div class='report-box'>", unsafe_allow_html=True)
-                st.text_area(label="Archive Log View", value="\n".join(output_lines), height=240, disabled=True, key="archive_txt_area")
+                # NATIVE UPGRADE: Historic archive log section converted to the new zero-glitch text layout
+                st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
+                st.code("\n".join(output_lines), language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
-                
-                # UPGRADE: Add dedicated clipboard copy mechanism for the historical archive view payload
-                escaped_archive = "\n".join(output_lines).replace('`', '\\`').replace('$', '\\$')
-                js_archive_copy = f"""
-                <script>
-                function runArchiveCopy() {{
-                    navigator.clipboard.writeText(`{escaped_archive}`);
-                }}
-                </script>
-                """
-                col_c3, _ = st.columns([1, 3])
-                with col_c3:
-                    if st.button("📋 Copy History Block", key="manual_archive_copy_btn", use_container_width=True):
-                        components.html(f"{js_archive_copy}<script>runArchiveCopy();</script>", height=0, width=0)
-                        st.toast("Copied Archive Log to clipboard!")
                 
                 if archive_links_stager:
                     st.markdown("🔗 **Quick-Open Archived Task Links:**")
