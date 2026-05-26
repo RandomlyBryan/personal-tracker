@@ -1,1 +1,2 @@
 task_id,task_name,task_description,task_url,frequency,is_recurring,last_completed,task_screenshot_b64
+1,Test task,No instructions.,,Daily,Yes,2026-05-26,
