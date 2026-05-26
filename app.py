@@ -142,11 +142,6 @@ st.markdown(
             letter-spacing: 3px;
             margin-left: 6px;
         }
-        
-        /* Hide the annoying multi-row index columns inside data editors */
-        div[data-testid="stDataEditor"] data-grid-container {
-            border-radius: 6px !important;
-        }
     </style>
     """,
     unsafe_allow_html=True
@@ -308,7 +303,6 @@ tomorrow = today + timedelta(days=1)
 # --- ALERTS MANAGEMENT ---
 overdue_tasks_list = []
 for _, row in df.iterrows():
-    # FIX: Explicitly calculated line variables to prevent downstream NameError evaluation crashes
     loop_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
     if (today - loop_comp_date).days >= get_days_interval(row.get('frequency', 'Daily')):
         overdue_tasks_list.append(row.get('task_name', 'Unknown Task'))
@@ -325,7 +319,7 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: PENDING TASKS (AUTO-EXPANDING UPDATES CONTAINER) ---
+    # --- TAB 1: PENDING TASKS (AUTO-EXPANDING TEXT AREA FIX) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -344,7 +338,7 @@ with left_panel:
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
-                col_text, col_action = st.columns([1.4, 1.6])
+                col_text, col_action = st.columns([1.3, 1.7])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
@@ -364,28 +358,17 @@ with left_panel:
                 with col_action:
                     col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
                     with col_input:
-                        # FIX: Native UI input frame automatically expands vertically to keep long strings visible
-                        entry_box_payload = st.data_editor(
-                            pd.DataFrame([{"Action Notes / Results": ""}]),
-                            key=f"editor_note_{row.get('task_id')}",
-                            hide_index=True,
-                            use_container_width=True,
-                            column_config={
-                                "Action Notes / Results": st.column_config.TextColumn(
-                                    label="Action Notes / Results:",
-                                    placeholder="Type data updates here...",
-                                    required=False
-                                )
-                            }
+                        # FIX: Replaced broken data_editor with an auto-expanding text_area that grows dynamically as you type
+                        result_notes = st.text_area(
+                            label="Action Notes / Results:",
+                            placeholder="Type data updates here...",
+                            key=f"res_{row.get('task_id')}",
+                            height=42,
+                            label_visibility="collapsed"
                         )
                     with col_btn:
                         if st.button("Done", key=f"remind_btn_{row.get('task_id')}", use_container_width=True):
-                            try:
-                                parsed_note_val = str(entry_box_payload.iloc[0]["Action Notes / Results"]).strip()
-                            except Exception:
-                                parsed_note_val = ""
-                                
-                            clean_notes = parsed_note_val if parsed_note_val else "Completed successfully."
+                            clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                             new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                             
                             new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
@@ -401,7 +384,7 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER (LINK-FREE AUTOMATED PIPELINE) ---
+    # --- TAB 2: EOD REPORT LOG BUILDER (LINK-FREE SUMMARY & PREFIX-FREE PRIORITIES) ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -449,7 +432,7 @@ with left_panel:
                 else:
                     grouped_lines.append(f"• {title}:")
                     for note in entries:
-                        # FIX: Task resource URLs are stripped out entirely from the summary output block
+                        # FIX: Keeps summary block strictly link-free
                         grouped_lines.append(f"  - {note}")
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
@@ -472,7 +455,7 @@ with left_panel:
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
             n_due = l_completed + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
-            # FIX: Cleared out the messy, cluttered text tags for an elegant line view layout
+            # FIX: Dropped [ROLLOVER] and [SCHEDULED] overview tags completely for clean bullet formatting
             if (today - l_completed).days >= get_days_interval(row.get('frequency', 'Daily')): 
                 auto_priorities.append(f"• {row.get('task_name', 'Task')}")
             elif n_due == tomorrow: 
@@ -668,7 +651,7 @@ with left_panel:
                             save_and_push(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
-                # FIX: Remedied syntax error bracket placement mismatch on line 741 layout configurations
+                # FIX: Rectified brackets inside layout evaluation loop
                 else:
                     with ec1:
                         current_stars_count = int(row.get('task_priority', 3))
