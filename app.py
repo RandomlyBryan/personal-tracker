@@ -135,11 +135,12 @@ st.markdown(
             border: 1px solid #232936 !important;
         }
         
-        /* High contrast flag highlighting colors */
-        .flags-container {
-            color: #EF4444 !important;
+        /* Premium star spacing indicator style */
+        .stars-container {
+            color: #F59E0B !important;
             font-weight: bold;
-            letter-spacing: 2px;
+            letter-spacing: 3px;
+            margin-left: 6px;
         }
     </style>
     """,
@@ -155,13 +156,13 @@ ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
-# Helper list map array for the 5-tier selection options
-FLAG_OPTIONS = [
-    "🚩 (Priority 1 - Lowest)",
-    "🚩🚩 (Priority 2)",
-    "🚩🚩🚩 (Priority 3)",
-    "🚩🚩🚩🚩 (Priority 4)",
-    "🚩🚩🚩🚩🚩 (Priority 5 - Highest)"
+# UPGRADE: Visual option strings switched to an elegant star configuration mapping
+STAR_OPTIONS = [
+    "⭐ (Priority 1 - Lowest)",
+    "⭐⭐ (Priority 2)",
+    "⭐⭐⭐ (Priority 3)",
+    "⭐⭐⭐⭐ (Priority 4)",
+    "⭐⭐⭐⭐⭐ (Priority 5 - Highest)"
 ]
 
 if "editing_task_id" not in st.session_state: st.session_state.editing_task_id = None
@@ -204,18 +205,14 @@ def get_starter_tasks():
         "is_recurring": ["Yes", "Yes", "Yes"],
         "last_completed": [(datetime.now() - timedelta(days=2)).strftime(STORAGE_DATE_FORMAT), (datetime.now() - timedelta(days=8)).strftime(STORAGE_DATE_FORMAT), (datetime.now() - timedelta(days=32)).strftime(STORAGE_DATE_FORMAT)],
         "task_screenshot_b64": ["", "", ""],
-        "task_priority": [3, 2, 1]  # UPGRADE: Scaled default data baseline weight values to numbers 1-5
+        "task_priority": [3, 2, 1]
     }
 
 def verify_and_align_columns(df_obj, filename, fallback_cols):
     updated = False
     for col in fallback_cols:
         if col not in df_obj.columns:
-            # If migrating old text column strings, parse them cleanly into numbers
-            if col == "task_priority":
-                df_obj[col] = 3  # Default fallback level middle tier
-            else:
-                df_obj[col] = ""
+            df_obj[col] = 3 if col == "task_priority" else ""
             updated = True
     if updated:
         df_obj.to_csv(filename, index=False)
@@ -233,8 +230,6 @@ else:
     df["task_url"] = df["task_url"].fillna("").astype(str)
     df["is_recurring"] = df["is_recurring"].fillna("Yes").astype(str)
     df["task_screenshot_b64"] = df["task_screenshot_b64"].fillna("").astype(str)
-    
-    # Safe numerical converter logic for task priority tracking arrays
     try:
         df["task_priority"] = pd.to_numeric(df["task_priority"].fillna(3)).astype(int)
     except Exception:
@@ -325,11 +320,11 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Archive Viewer", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: ACTIVE PENDING WORK ROUTINES (SORTED BY HIGHEST FLAG COUNT) ---
+    # --- TAB 1: PENDING TASKS (SORTED BY HIGHEST STAR COUNT) ---
     with tab_alerts:
         st.subheader("Items Due For Update")
         
-        # UPGRADE sorting engine setup: executes descending alignment using absolute flag weights (5 straight down to 1)
+        # Sort routines dynamically from 5 stars down to 1 star
         active_pending_df = df.copy()
         if "task_priority" in active_pending_df.columns:
             active_pending_df["task_priority"] = pd.to_numeric(active_pending_df["task_priority"]).fillna(3).astype(int)
@@ -342,15 +337,15 @@ with left_panel:
             if days_since >= get_days_interval(row.get('frequency', 'Daily')):
                 reminders_found = True
                 
-                # Dynamic compilation loop to draw the matching number of physical flag shapes on screen
-                flag_weight = int(row.get('task_priority', 3))
-                flag_render_string = "🚩" * flag_weight
+                # UPGRADE: Formulate golden star layout string for header tracking
+                star_weight = int(row.get('task_priority', 3))
+                star_render_string = "⭐" * star_weight
                 
                 col_text, col_action = st.columns([1.5, 1.5])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    # Append high-contrast, multi-flag arrays inline with the routine text layout header
-                    st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='flags-container'>{flag_render_string}</span>", unsafe_allow_html=True)
+                    # Render sleek gold star layout inline with the item name
+                    st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
                     st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                     
                     with st.expander("📄 View Instructions & Links"):
@@ -384,7 +379,7 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: DAILY EOD COPY BLOCK GENERATOR ---
+    # --- TAB 2: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -482,7 +477,7 @@ with left_panel:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE TRACKER HISTORY ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
         st.subheader("📊 Completed Work History Archive")
         range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
@@ -544,7 +539,7 @@ with left_panel:
                         try: st.image(base64.b64decode(b64), caption=f"[{fd}] - {tt}", width=300)
                         except Exception: pass
 
-    # --- TAB 4: DATA CREATION FORMS (UPGRADED WITH 5-FLAG SELECTOR) ---
+    # --- TAB 4: DATA CREATION FORMS (UPGRADED WITH STAR VALUE FIELDS) ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
@@ -557,8 +552,8 @@ with left_panel:
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
                 with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
-                # UPGRADE: Form selector map reads numerical weights based on user flag selections
-                with col_f3: selected_flag_lbl = st.selectbox("Assign Priority Flag Level:", FLAG_OPTIONS, index=2)
+                # UPGRADE: Selection matches visual star rating tiers
+                with col_f3: selected_star_lbl = st.selectbox("Assign Priority Star Level:", STAR_OPTIONS, index=2)
                 
                 start_date = st.date_input("Routine Start Date", value=today)
                 if st.form_submit_button("Save Routine") and new_name:
@@ -566,8 +561,7 @@ with left_panel:
                     media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8') if uploaded_task_media is not None else ""
                     new_id = int(df['task_id'].max() + 1) if not df.empty else 1
                     
-                    # Convert the string label back to a numerical index integer weight score
-                    numeric_prio_weight = FLAG_OPTIONS.index(selected_flag_lbl) + 1
+                    numeric_prio_weight = STAR_OPTIONS.index(selected_star_lbl) + 1
                     
                     new_task_row = {
                         "task_id": new_id, 
@@ -595,15 +589,15 @@ with left_panel:
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 5: MAINTENANCE MANAGEMENT (UPGRADED WITH 5-FLAG EDIT RE-SORT CONTROLS) ---
+    # --- TAB 5: MAINTENANCE LISTS (UPGRADED WITH HIGH-TO-LOW TRACKING & STAR DROPDOWNS) ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
         m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
         with m_task:
-            # Render existing items sorted by highest flag order inside the modifier sub-pane layout
             maintenance_df = df.copy()
             if "task_priority" in maintenance_df.columns:
                 maintenance_df["task_priority"] = pd.to_numeric(maintenance_df["task_priority"]).fillna(3).astype(int)
+                # UPGRADE: Keeps the existing task maintenance view strictly sorted from highest priority down to lowest
                 maintenance_df = maintenance_df.sort_values(by="task_priority", ascending=False)
                 
             for index, row in maintenance_df.iterrows():
@@ -620,10 +614,10 @@ with left_panel:
                         edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{row.get('task_id')}", label_visibility="collapsed")
                         edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{row.get('task_id')}", label_visibility="collapsed")
                         
-                        # UPGRADE: Maintenance form dropdown supports full 5 flag re-assignment array mappings
+                        # UPGRADE: Dropdown edit fields sync perfectly to the star tiers array mapping index
                         current_prio_val = int(row.get('task_priority', 3))
                         fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
-                        edit_flag_lbl = st.selectbox("Edit Flag Priority Level", FLAG_OPTIONS, index=fallback_prio_idx, key=f"eprio_{row.get('task_id')}")
+                        edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{row.get('task_id')}")
                         edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{row.get('task_id')}", label_visibility="collapsed")
                     with ec3:
                         if st.button("💾", key=f"s_{row.get('task_id')}"):
@@ -633,16 +627,16 @@ with left_panel:
                             df.at[orig_master_idx, 'frequency'] = edit_freq
                             df.at[orig_master_idx, 'is_recurring'] = edit_rec
                             df.at[orig_master_idx, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
-                            df.at[orig_master_idx, 'task_priority'] = FLAG_OPTIONS.index(edit_flag_lbl) + 1
+                            df.at[orig_master_idx, 'task_priority'] = STAR_OPTIONS.index(edit_star_lbl) + 1
                             
                             save_and_push(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
                 else:
                     with ec1:
-                        current_flags_count = int(row.get('task_priority', 3))
-                        flag_display = "🚩" * current_flags_count
-                        st.write(f"**{row.get('task_name', 'Task')}** — <span class='flags-container'>{flag_display}</span>", unsafe_allow_html=True)
+                        current_stars_count = int(row.get('task_priority', 3))
+                        star_display = "⭐" * current_stars_count
+                        st.write(f"**{row.get('task_name', 'Task')}** — <span class='stars-container'>{star_display}</span>", unsafe_allow_html=True)
                         st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{'One-Time' if str(row.get('is_recurring', 'Yes')) == 'No' else 'Recurring'}*")
                         if str(row.get('task_url', '')).strip() and str(row.get('task_url', '')) != "nan": st.caption("🔗 Link Data Saved")
                     with ec2:
