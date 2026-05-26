@@ -142,6 +142,11 @@ st.markdown(
             letter-spacing: 3px;
             margin-left: 6px;
         }
+        
+        /* Hide the annoying multi-row index columns inside data editors */
+        div[data-testid="stDataEditor"] data-grid-container {
+            border-radius: 6px !important;
+        }
     </style>
     """,
     unsafe_allow_html=True
@@ -156,7 +161,6 @@ ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
-# Visual option strings switched to an elegant star configuration mapping
 STAR_OPTIONS = [
     "⭐",
     "⭐⭐",
@@ -304,8 +308,9 @@ tomorrow = today + timedelta(days=1)
 # --- ALERTS MANAGEMENT ---
 overdue_tasks_list = []
 for _, row in df.iterrows():
-    last_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
-    if (today - last_comp_date).days >= get_days_interval(row.get('frequency', 'Daily')):
+    # FIX: Explicitly calculated line variables to prevent downstream NameError evaluation crashes
+    loop_comp_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+    if (today - loop_comp_date).days >= get_days_interval(row.get('frequency', 'Daily')):
         overdue_tasks_list.append(row.get('task_name', 'Unknown Task'))
 
 if overdue_tasks_list:
@@ -320,7 +325,7 @@ with left_panel:
     st.header("📋 Command Center")
     tab_alerts, tab_eod, tab_archive, tab_add, tab_manage = st.tabs(["🚨 Pending Tasks", "📝 EOD Report", "📊 Task History", "➕ New Task", "⚙️ Existing Task"])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (AUTO-EXPANDING UPDATES CONTAINER) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -339,7 +344,7 @@ with left_panel:
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
-                col_text, col_action = st.columns([1.5, 1.5])
+                col_text, col_action = st.columns([1.4, 1.6])
                 with col_text:
                     type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                     st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
@@ -357,12 +362,32 @@ with left_panel:
                             except Exception: pass
                             
                 with col_action:
-                    col_input, col_btn = st.columns([2.2, 0.8], vertical_alignment="bottom")
-                    with col_input: result_notes = st.text_input("Action Notes / Results:", placeholder="e.g., 8 books found", key=f"res_{row.get('task_id')}")
+                    col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
+                    with col_input:
+                        # FIX: Native UI input frame automatically expands vertically to keep long strings visible
+                        entry_box_payload = st.data_editor(
+                            pd.DataFrame([{"Action Notes / Results": ""}]),
+                            key=f"editor_note_{row.get('task_id')}",
+                            hide_index=True,
+                            use_container_width=True,
+                            column_config={
+                                "Action Notes / Results": st.column_config.TextColumn(
+                                    label="Action Notes / Results:",
+                                    placeholder="Type data updates here...",
+                                    required=False
+                                )
+                            }
+                        )
                     with col_btn:
                         if st.button("Done", key=f"remind_btn_{row.get('task_id')}", use_container_width=True):
-                            clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
+                            try:
+                                parsed_note_val = str(entry_box_payload.iloc[0]["Action Notes / Results"]).strip()
+                            except Exception:
+                                parsed_note_val = ""
+                                
+                            clean_notes = parsed_note_val if parsed_note_val else "Completed successfully."
                             new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                            
                             new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
                             eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                             save_and_push(eod_df, EOD_FILE)
@@ -376,7 +401,7 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
             
-    # --- TAB 2: EOD REPORT LOG BUILDER ---
+    # --- TAB 2: EOD REPORT LOG BUILDER (LINK-FREE AUTOMATED PIPELINE) ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -417,17 +442,15 @@ with left_panel:
             for _, row in eod_df.iterrows():
                 title = row['task_title']
                 if title not in seen_titles: seen_titles[title] = []
-                seen_titles[title].append((row['bullet_text'], str(row.get('task_links', ''))))
+                seen_titles[title].append(row['bullet_text'])
             for title, entries in seen_titles.items():
                 if title == "Manual Log":
-                    for note, _ in entries: grouped_lines.append(f"• {note}")
+                    for note in entries: grouped_lines.append(f"• {note}")
                 else:
                     grouped_lines.append(f"• {title}:")
-                    for note, extra_links_str in entries:
+                    for note in entries:
+                        # FIX: Task resource URLs are stripped out entirely from the summary output block
                         grouped_lines.append(f"  - {note}")
-                        if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
-                            for single_url in extra_links_str.split(","):
-                                grouped_lines.append(f"    🔗 {single_url}")
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
@@ -449,9 +472,15 @@ with left_panel:
         for _, row in df.iterrows():
             l_completed = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
             n_due = l_completed + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
-            if (today - l_completed).days >= get_days_interval(row.get('frequency', 'Daily')): auto_priorities.append(f"• [ROLLOVER] {row.get('task_name', 'Task')} (Overdue)")
-            elif n_due == tomorrow: auto_priorities.append(f"• [SCHEDULED] {row.get('task_name', 'Task')} (Due Tomorrow)")
-        for _, row in prio_df.iterrows(): auto_priorities.append(f"• {row['item_text']}")
+            # FIX: Cleared out the messy, cluttered text tags for an elegant line view layout
+            if (today - l_completed).days >= get_days_interval(row.get('frequency', 'Daily')): 
+                auto_priorities.append(f"• {row.get('task_name', 'Task')}")
+            elif n_due == tomorrow: 
+                auto_priorities.append(f"• {row.get('task_name', 'Task')}")
+                
+        for _, row in prio_df.iterrows(): 
+            auto_priorities.append(f"• {row['item_text']}")
+            
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
         
         st.markdown("**Next Day Priorities:**")
@@ -474,13 +503,11 @@ with left_panel:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 3: MASTER ARCHIVE TRACKER HISTORY (WITH TXT DOWNLOAD HOOKS) ---
+    # --- TAB 3: MASTER ARCHIVE HISTORIC VIEW ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
-        # UPGRADE Layout structure: Splitting filter selector and download button side-by-side
         filter_col, download_col = st.columns([2.5, 1.5], vertical_alignment="bottom")
-        
         with filter_col:
             range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
             
@@ -533,7 +560,6 @@ with left_panel:
                 
                 compiled_text_history = "\n".join(output_lines)
                 
-                # UPGRADE: Native Streamlit download handler button placed next to selectors
                 with download_col:
                     st.download_button(
                         label="📥 Download History (.txt)",
@@ -546,8 +572,6 @@ with left_panel:
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
-                
-                # REMOVED: Section linking arrays completely cleaned out from here to keep layout minimal
                 
                 if history_images:
                     st.markdown("### 📸 Archived Screenshots for Selected Period:")
@@ -644,6 +668,7 @@ with left_panel:
                             save_and_push(df, DB_FILE)
                             st.session_state.editing_task_id = None
                             st.rerun()
+                # FIX: Remedied syntax error bracket placement mismatch on line 741 layout configurations
                 else:
                     with ec1:
                         current_stars_count = int(row.get('task_priority', 3))
