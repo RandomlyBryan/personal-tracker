@@ -97,6 +97,27 @@ st.markdown(
             white-space: pre-wrap !important;
         }
         
+        /* Make form button style clean and match previous themes */
+        div.pending-row-form button {
+            background-color: #0284C7 !important;
+            color: #FFFFFF !important;
+            font-weight: bold !important;
+            border: 1px solid #0369A1 !important;
+            border-radius: 6px !important;
+            width: 100% !important;
+            transition: all 0.25s ease;
+        }
+        div.pending-row-form button:hover {
+            background-color: #0ea5e9 !important;
+            box-shadow: 0 0 8px #0ea5e9 !important;
+        }
+        /* Strip the border off the native row forms to maintain layout flow */
+        div[data-testid="stForm"] {
+            border: none !important;
+            padding: 0 !important;
+            background-color: transparent !important;
+        }
+        
         button[kind="secondary"] {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -318,7 +339,6 @@ left_panel, right_panel = st.columns([1, 1], gap="large")
 with left_panel:
     st.header("📋 Command Center")
     
-    # REORDERED TAB DEPLOYMENT HOOK
     tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
         "🚨 Pending Tasks", 
         "➕ New Task", 
@@ -327,7 +347,7 @@ with left_panel:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (FIXED SINGLE-CLICK SUBMISSION VIA FORM CONTAINERS) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -346,48 +366,54 @@ with left_panel:
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
-                col_text, col_action = st.columns([1.3, 1.7])
-                with col_text:
-                    type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                    st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
-                    st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
-                    
-                    with st.expander("📄 View Instructions & Links"):
-                        st.write(row.get('task_description', 'No instructions.'))
-                        saved_links_str = str(row.get('task_url', '')).strip()
-                        if saved_links_str and saved_links_str != "nan":
-                            for url_item in saved_links_str.split(","):
-                                if url_item.strip(): st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
-                        saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
-                        if saved_img_b64 and saved_img_b64 != "nan":
-                            try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=220)
-                            except Exception: pass
-                            
-                with col_action:
-                    col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
-                    with col_input:
-                        result_notes = st.text_area(
-                            label="Action Notes / Results:",
-                            placeholder="Type data updates here...",
-                            key=f"res_{row.get('task_id')}",
-                            height=42,
-                            label_visibility="collapsed"
-                        )
-                    with col_btn:
-                        if st.button("Done", key=f"remind_btn_{row.get('task_id')}", use_container_width=True):
-                            clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
-                            new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                            
-                            new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
-                            eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
-                            save_and_push(eod_df, EOD_FILE)
-                            
-                            orig_idx = df[df['task_id'] == row.get('task_id')].index
-                            if not orig_idx.empty:
-                                if str(row.get('is_recurring', 'Yes')) == "No": df = df.drop(orig_idx)
-                                else: df.at[orig_idx[0], 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
-                                save_and_push(df, DB_FILE)
-                            st.rerun()
+                # UPGRADE: Encapsulating the individual row in a clean, zero-border form block for immediate execution
+                st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
+                with st.form(key=f"form_pending_{row.get('task_id')}"):
+                    col_text, col_action = st.columns([1.3, 1.7])
+                    with col_text:
+                        type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
+                        st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
+                        st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
+                        
+                        with st.expander("📄 View Instructions & Links"):
+                            st.write(row.get('task_description', 'No instructions.'))
+                            saved_links_str = str(row.get('task_url', '')).strip()
+                            if saved_links_str and saved_links_str != "nan":
+                                for url_item in saved_links_str.split(","):
+                                    if url_item.strip(): st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
+                            saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
+                            if saved_img_b64 and saved_img_b64 != "nan":
+                                try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=220)
+                                except Exception: pass
+                                
+                    with col_action:
+                        col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
+                        with col_input:
+                            result_notes = st.text_area(
+                                label="Action Notes / Results:",
+                                placeholder="Type data updates here...",
+                                key=f"res_{row.get('task_id')}",
+                                height=42,
+                                label_visibility="collapsed"
+                            )
+                        with col_btn:
+                            # Form submissions process values on the exact first click event
+                            submit_trigger = st.form_submit_button("Done")
+                            if submit_trigger:
+                                clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
+                                new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                                
+                                new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
+                                eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                                save_and_push(eod_df, EOD_FILE)
+                                
+                                orig_idx = df[df['task_id'] == row.get('task_id')].index
+                                if not orig_idx.empty:
+                                    if str(row.get('is_recurring', 'Yes')) == "No": df = df.drop(orig_idx)
+                                    else: df.at[orig_idx[0], 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
+                                    save_and_push(df, DB_FILE)
+                                st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
