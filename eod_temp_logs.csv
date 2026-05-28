@@ -1,1 +1,2 @@
 log_id,task_title,bullet_text,log_date,task_links,screenshot_b64
+1,Add new ISBN's to Holiday bargains,"I tried adding the new ISBNs on the category page: https://admincms.awesomebooks.com/category/custom/8601/edit but it's not adding on the list, I think because 30 ISBNs is the limit?",2026-05-28,,
