@@ -97,7 +97,6 @@ st.markdown(
             white-space: pre-wrap !important;
         }
         
-        /* Make form button style clean and match previous themes */
         div.pending-row-form button {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -111,7 +110,6 @@ st.markdown(
             background-color: #0ea5e9 !important;
             box-shadow: 0 0 8px #0ea5e9 !important;
         }
-        /* Strip the border off the native row forms to maintain layout flow */
         div[data-testid="stForm"] {
             border: none !important;
             padding: 0 !important;
@@ -156,7 +154,6 @@ st.markdown(
             border: 1px solid #232936 !important;
         }
         
-        /* Premium star spacing indicator style */
         .stars-container {
             color: #F59E0B !important;
             font-weight: bold;
@@ -347,7 +344,7 @@ with left_panel:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS (FIXED SINGLE-CLICK SUBMISSION VIA FORM CONTAINERS) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -366,7 +363,6 @@ with left_panel:
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
-                # UPGRADE: Encapsulating the individual row in a clean, zero-border form block for immediate execution
                 st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
                 with st.form(key=f"form_pending_{row.get('task_id')}"):
                     col_text, col_action = st.columns([1.3, 1.7])
@@ -397,7 +393,6 @@ with left_panel:
                                 label_visibility="collapsed"
                             )
                         with col_btn:
-                            # Form submissions process values on the exact first click event
                             submit_trigger = st.form_submit_button("Done")
                             if submit_trigger:
                                 clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
@@ -417,9 +412,10 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
-    # --- TAB 2: NEW TASK (CREATION FORMS) ---
+    # --- TAB 2: NEW TASK (CREATION FORMS + UPGRADED FORMULA REFERENCE GUIDE) ---
     with tab_add:
-        sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
+        sub_tab_task, sub_tab_note, sub_tab_formulas = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note", "📊 Formula Reference"])
+        
         with sub_tab_task:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
@@ -466,7 +462,54 @@ with left_panel:
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
-    # --- TAB 3: EXISTING TASK (MAINTENANCE LISTS) ---
+        # UPGRADE: New sub-tab containing your high-utility dataset checking formulas
+        with sub_tab_formulas:
+            st.subheader("Excel / Google Sheets Counting Formulas")
+            st.markdown("Click the copy icon on the right side of any block to instantly stage the formula to your clipboard.")
+            
+            with st.expander("🟢 'Yes' Criteria Counters", expanded=True):
+                st.markdown("**10-Row Horizon (11 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), "Yes")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**100-Row Horizon (101 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), "Yes")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**500-Row Horizon (501 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), "Yes")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**5000-Row Horizon (5001 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), "Yes")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+            with st.expander("🔴 'No' Criteria Counters", expanded=True):
+                st.markdown("**10-Row Horizon (11 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), "No")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**100-Row Horizon (101 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), "No")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**500-Row Horizon (501 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), "No")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
+                st.markdown("**5000-Row Horizon (5001 Bounds):**")
+                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), "No")', language=None)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    # --- TAB 3: EXISTING TASK ---
     with tab_manage:
         st.subheader("Edit & Delete Settings")
         m_task, m_note, m_danger = st.tabs(["Rotations", "Calendar Notes", "⚠️ Factory Reset"])
