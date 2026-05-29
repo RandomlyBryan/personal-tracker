@@ -344,7 +344,7 @@ with left_panel:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (AUTOMATIC LINE-BY-LINE COPY BOX ENGINE) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -371,8 +371,22 @@ with left_panel:
                         st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
                         st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                         
-                        with st.expander("📄 View Instructions & Links"):
-                            st.write(row.get('task_description', 'No instructions.'))
+                        with st.expander("📄 View Instructions & Formulas"):
+                            desc_content = str(row.get('task_description', 'No instructions.'))
+                            
+                            # PARSER ENGINE: Checks the task details line-by-line. 
+                            # If a line starts with an equals sign (=), it wraps it in a quick-copy block.
+                            if any(line.strip().startswith("=") for line in desc_content.split("\n")):
+                                for line in desc_content.split("\n"):
+                                    if line.strip().startswith("="):
+                                        st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                                        st.code(line.strip(), language=None)
+                                        st.markdown("</div>", unsafe_allow_html=True)
+                                    elif line.strip():
+                                        st.write(line.strip())
+                            else:
+                                st.write(desc_content)
+                                
                             saved_links_str = str(row.get('task_url', '')).strip()
                             if saved_links_str and saved_links_str != "nan":
                                 for url_item in saved_links_str.split(","):
@@ -412,14 +426,14 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
-    # --- TAB 2: NEW TASK (CREATION FORMS + UPGRADED FORMULA REFERENCE GUIDE) ---
+    # --- TAB 2: NEW TASK (REORGANIZED & CLEAN) ---
     with tab_add:
-        sub_tab_task, sub_tab_note, sub_tab_formulas = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note", "📊 Formula Reference"])
-        
+        sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
-                new_desc = st.text_area("Instructions")
+                # TIP: Paste your formula configurations directly into this Instructions text area
+                new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
                 bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
@@ -461,53 +475,6 @@ with left_panel:
                     notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
-
-        # UPGRADE: New sub-tab containing your high-utility dataset checking formulas
-        with sub_tab_formulas:
-            st.subheader("Excel / Google Sheets Counting Formulas")
-            st.markdown("Click the copy icon on the right side of any block to instantly stage the formula to your clipboard.")
-            
-            with st.expander("🟢 'Yes' Criteria Counters", expanded=True):
-                st.markdown("**10-Row Horizon (11 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), "Yes")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**100-Row Horizon (101 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), "Yes")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**500-Row Horizon (501 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), "Yes")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**5000-Row Horizon (5001 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), "Yes")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-            with st.expander("🔴 'No' Criteria Counters", expanded=True):
-                st.markdown("**10-Row Horizon (11 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), "No")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**100-Row Horizon (101 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), "No")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**500-Row Horizon (501 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), "No")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                st.markdown("**5000-Row Horizon (5001 Bounds):**")
-                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                st.code('=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), "No")', language=None)
-                st.markdown("</div>", unsafe_allow_html=True)
 
     # --- TAB 3: EXISTING TASK ---
     with tab_manage:
