@@ -1,14 +1,4 @@
 task_id,task_name,task_description,task_url,frequency,is_recurring,last_completed,task_screenshot_b64,task_priority
-3,Find books for and set up Father’s Day Gifts 2 campaign,"A week before Father’s Day, we will do a second campaign promoting some more books. Please find 3 books for each of these categories:
-
-1. Books Under £15
-2. Brand New Fiction
-3. Bestselling Non-Fiction
-
-Please then create the campaign. (We can always swap out books if I decide to add something different when I’m back!)
-
-The A/B test for this email will be including subject headers vs not including subject headers. So one email variation needs to include buttons that say Books Under £15 etc. And one variation needs to not include the headers. 
-",,Daily,No,2026-05-25,,3
 4,Find books for and set up Authors of the Month campaign,"Please find 3 authors who are particularly popular at the moment. E.g. if they have just released a new book or their book has recently been adapted to film/TV.
 
 I did a campaign like this in April, so you can use it for inspiration - but this time we need different authors!
