@@ -43,18 +43,3 @@ Bestselling Fiction
 6,Angolia Metrics Update,No instructions.,,Weekly,Yes,2026-05-26,,3
 7,Flow metrics update,No instructions.,,Weekly,Yes,2026-05-26,,3
 8,Google Analytics metrics update,No instructions.,,Monthly,Yes,2026-04-28,,3
-9,TCM_Week Report,"Formula to use:
-
-Yes
-
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), ""Yes"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), ""Yes"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), ""Yes"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), ""Yes"")
-
-No
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 11), ""No"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 101), ""No"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 501), ""No"")
-=COUNTIF(Sheet1!X2:INDEX(Sheet1!X:X, 5001), ""No"")
-",,Weekly,Yes,2026-05-20,,5
