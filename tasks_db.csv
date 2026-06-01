@@ -1,24 +1,4 @@
 task_id,task_name,task_description,task_url,frequency,is_recurring,last_completed,task_screenshot_b64,task_priority
-4,Find books for and set up Authors of the Month campaign,"Please find 3 authors who are particularly popular at the moment. E.g. if they have just released a new book or their book has recently been adapted to film/TV.
-
-I did a campaign like this in April, so you can use it for inspiration - but this time we need different authors!
-https://www.klaviyo.com/campaign/01KN7FX0PZAA5X4MD24B1Y7WG1/reports/overview 
-
-You will need to choose 3 books for each author. When you write the email copy, please include a short line about each author and link to their page on the website. If an author doesn’t have their own page, you can just link to a search results page with their name. E.g. https://www.awesomebooks.com/search/advanced?q=bob%20mortimer 
-
-The A/B Test will be author-led campaign vs book-led campaign. E.g. “This Month’s Biggest Authors” vs “3 Books Everyone Is Talking About”. You can keep the layout the same, but the email copy needs to be different in the variations. 
-
-For the author-led version:
-Focus on the authors themselves
-Use the author names in the heading and copy
-Include short descriptions about the authors
-Use CTAs like “Browse all books by…” or “Explore the author”
-For the book-led version:
-Focus on the individual books instead
-Lead with the story, popularity, adaptation or hype around the books
-Make the book titles the main focus rather than the author names
-Use CTAs like “Read the bestseller” or “Shop the book”
-",,Daily,No,2026-05-25,,3
 5,Weekly tasks - carousel update,"As laid out in the Google file you put together. 
 
 Please don’t forget to update these homepage carousels weekly. You only need to add 1 or 2 books each time, just remember to delete the last book at the end of the carousel too!
