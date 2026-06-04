@@ -622,7 +622,7 @@ def send_email_notification(task_name, days_overdue, description, resource_url):
 
         link_line = f"🔗 Resource Link: {resource_url}\n" if resource_url and str(resource_url) != "nan" and str(resource_url).strip() != "" else ""
 
-        body = (f"Hello Bryan,\n\nThis is an automated alert from your Personal Tracker Dashboard.\nThe following routine requires an update:\n\n📌 Task: {task_name}\n📝 Instructions:\n{description}\n{link_line}\nAccess control panel: https://share.streamlit.io/")
+        body = (f"Hello Bryan,\n\nThis is an automated alert from your Personal Tracker Dashboard.\nThe following routine requires an update:\n\n📌 Task: {task_name}\n📂 Instructions:\n{description}\n{link_line}\nAccess control panel: https://share.streamlit.io/")
 
         msg.attach(MIMEText(body, 'plain'))
 
@@ -728,7 +728,7 @@ with main_layout_frame:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    with st.expander("📊 Performance Analytics & Velocity Insights", expanded=False):
+    with st.expander("🕒 Performance Analytics & Velocity Insights", expanded=False):
 
         if not archive_df.empty:
 
@@ -780,15 +780,15 @@ with main_layout_frame:
 
     tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
 
-        "🚨 Pending Tasks", 
+        "⚠️ Pending Tasks", 
 
         "➕ New Task", 
 
-        "⚙️ Existing Task",
+        "🕒 Existing Task",
 
-        "📝 EOD Report", 
+        "📑 EOD Report", 
 
-        "📊 Task History"
+        "🕒 Task History"
 
     ])
 
@@ -1540,7 +1540,7 @@ with main_layout_frame:
 
     with tab_archive:
 
-        st.subheader("📊 Completed Task History")
+        st.subheader("🕒 Completed Task History")
 
         
 
