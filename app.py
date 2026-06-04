@@ -1214,7 +1214,7 @@ with main_layout_frame:
 
                     with ec3:
 
-                        if st.button("💾", key=f"s_{row.get('task_id')}"):
+                        if st.button("✅", key=f"s_{row.get('task_id')}"):
 
                             df.at[orig_master_idx, 'task_name'] = edit_name
 
@@ -1254,11 +1254,11 @@ with main_layout_frame:
 
                     with ec2:
 
-                        if st.button("✏️", key=f"em_{row.get('task_id')}"): st.session_state.editing_task_id = row.get('task_id'); st.rerun()
+                        if st.button("✒️", key=f"em_{row.get('task_id')}"): st.session_state.editing_task_id = row.get('task_id'); st.rerun()
 
                     with ec3:
 
-                        if st.button("🗑️", key=f"d_{row.get('task_id')}"): 
+                        if st.button("♻️", key=f"d_{row.get('task_id')}"): 
 
                             df = df.drop(orig_master_idx)
 
@@ -1292,7 +1292,7 @@ with main_layout_frame:
 
                         with nc3:
 
-                            if st.button("💾", key=f"s_note_{row['note_id']}"):
+                            if st.button("✅", key=f"s_note_{row['note_id']}"):
 
                                 notes_df.at[index, 'title'] = en_title; notes_df.at[index, 'details'] = en_details; notes_df.at[index, 'event_date'] = en_date.strftime(STORAGE_DATE_FORMAT)
 
@@ -1310,11 +1310,11 @@ with main_layout_frame:
 
                         with nc2:
 
-                            if st.button("✏️", key=f"em_note_{row['note_id']}"): st.session_state.editing_note_id = row['note_id']; st.rerun()
+                            if st.button("✒️", key=f"em_note_{row['note_id']}"): st.session_state.editing_note_id = row['note_id']; st.rerun()
 
                         with nc3:
 
-                            if st.button("🗑️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
+                            if st.button("♻️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
 
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
 
@@ -1512,7 +1512,7 @@ with main_layout_frame:
 
         with col_clear_w:
 
-            if not eod_df.empty and st.button("🗑️ Clear Logged Work", use_container_width=True):
+            if not eod_df.empty and st.button("✅ Clear Task Logged", use_container_width=True):
 
                 archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
 
@@ -1526,7 +1526,7 @@ with main_layout_frame:
 
         with col_clear_p:
 
-            if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
+            if not prio_df.empty and st.button("♻️ Clear Staged Priorities", use_container_width=True):
 
                 prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
 
@@ -1692,7 +1692,7 @@ with main_layout_frame:
 
                 
 
-                st.markdown("### 💾 Recover Logged File Deliverables")
+                st.markdown("### ✅ Recover Logged File Deliverables")
 
                 file_found = False
 
