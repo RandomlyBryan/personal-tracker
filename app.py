@@ -444,11 +444,11 @@ with main_layout_frame:
                     for inst in plain_instructions:
                         st.markdown(f"**{inst}**")
                     
-                    st.markdown("#### **📋 Formula Shortcut Guide:**")
+                    st.markdown("#### **📋 Formula to Use:**")
                     grid_col_left, grid_col_right = st.columns(2, gap="medium")
                     
                     with grid_col_left:
-                        st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 'Yes' Counters:</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 In Stock:</span>", unsafe_allow_html=True)
                         if yes_formulas:
                             for f_item in yes_formulas:
                                 st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
@@ -457,7 +457,7 @@ with main_layout_frame:
                         else: st.caption("None configured.")
                             
                     with grid_col_right:
-                        st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 'No' Counters:</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 Out of Stock:</span>", unsafe_allow_html=True)
                         if no_formulas:
                             for f_item in no_formulas:
                                 st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
