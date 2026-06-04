@@ -784,7 +784,7 @@ with main_layout_frame:
 
         "➕ New Task", 
 
-        "🕒 Existing Task",
+        "⚡ Existing Task",
 
         "📑 EOD Report", 
 
