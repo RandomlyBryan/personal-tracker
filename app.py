@@ -49,6 +49,7 @@ st.markdown(
             color: #38BDF8 !important;
             border: 1px solid #0284C7 !important;
             font-weight: bold !important;
+            
         }
         [data-testid="stWidgetLabel"] p {
             color: #94A3B8 !important;
@@ -267,7 +268,6 @@ if not os.path.exists(ARCHIVE_FILE):
     archive_df.to_csv(ARCHIVE_FILE, index=False)
     push_to_github(ARCHIVE_FILE)
 else:
-    # FIX: Corrected target string variable to ARCHIVE_FILE constant to fix the NameError initialization crash
     archive_df = pd.read_csv(ARCHIVE_FILE)
     archive_df = verify_and_align_columns(archive_df, ARCHIVE_FILE, REQUIRED_LOG_COLUMNS)
 
@@ -332,9 +332,39 @@ if overdue_tasks_list:
     js_notification_code = f"<script>setTimeout(function(){{ if(Notification.permission==='granted'){{ new Notification('⏰ Overdue Routines Alert', {{ body: '{alert_summary}' }}); }} }}, 1000);</script>"
     components.html(js_notification_code, height=0, width=0)
 
-left_panel, right_panel = st.columns([1, 1], gap="large")
+# REFACTOR: Swapped column layout proportions from side-by-side [1, 1] to a primary single panel frame
+main_layout_frame, right_buffer_column = st.columns([12, 1])
 
-with left_panel:
+with main_layout_frame:
+    # --- SECTION 1: MONTHLY OVERVIEW AT THE VERY TOP ---
+    st.header("📅 Monthly Overview")
+    calendar_events = []
+    for index, row in df.iterrows():
+        base_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+        next_due = base_date + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
+        is_overdue = today >= next_due
+        
+        calendar_display_date = today if is_overdue else next_due
+        event_color = "#EF4444" if is_overdue else "#1E3A8A"
+        
+        formatted_cal_date = calendar_display_date.strftime(STORAGE_DATE_FORMAT)
+        
+        calendar_events.append({
+            "title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}", 
+            "start": formatted_cal_date, 
+            "end": formatted_cal_date, 
+            "backgroundColor": event_color, 
+            "borderColor": event_color, 
+            "allDay": True
+        })
+    for index, row in notes_df.iterrows():
+        n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
+        calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
+    calendar(events=calendar_events, options={"initialView": "dayGridMonth", "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, "editable": False, "selectable": True, "height": "auto", "dayMaxEvents": True, "moreLinkClick": "popover"}, key="monthly_grid_view")
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # --- SECTION 2: COMMAND CENTER TABS DIRECTLY BELOW THE CALENDAR ---
     st.header("📋 Command Center")
     
     tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
@@ -345,7 +375,7 @@ with left_panel:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (REORGANIZED INSTRUCTIONS ABOVE THE FORM INPUT BOX) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -364,65 +394,63 @@ with left_panel:
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
                 
+                type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
+                st.markdown(f"### **{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
+                st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
+                
+                # REFACTOR: Render task details and formulas inline right away instead of inside an expander
+                desc_content = str(row.get('task_description', 'No instructions.'))
+                if any(line.strip().startswith("=") for line in desc_content.split("\n")):
+                    for line in desc_content.split("\n"):
+                        if line.strip().startswith("="):
+                            st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                            st.code(line.strip(), language=None)
+                            st.markdown("</div>", unsafe_allow_html=True)
+                        elif line.strip():
+                            st.write(line.strip())
+                else:
+                    st.write(desc_content)
+                    
+                saved_links_str = str(row.get('task_url', '')).strip()
+                if saved_links_str and saved_links_str != "nan":
+                    link_cols = st.columns(len(saved_links_str.split(",")))
+                    for idx, url_item in enumerate(saved_links_str.split(",")):
+                        if url_item.strip():
+                            with link_cols[idx]:
+                                st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
+                
+                saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
+                if saved_img_b64 and saved_img_b64 != "nan":
+                    try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=350)
+                    except Exception: pass
+                
+                # REFACTOR: The updates field and submit button now stack cleanly directly below the instructions
                 st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
                 with st.form(key=f"form_pending_{row.get('task_id')}"):
-                    col_text, col_action = st.columns([1.3, 1.7])
-                    with col_text:
-                        type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
-                        st.markdown(f"**{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
-                        st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
+                    result_notes = st.text_area(
+                        label="Action Notes / Results:",
+                        placeholder="Type data updates here...",
+                        key=f"res_{row.get('task_id')}",
+                        height=68
+                    )
+                    
+                    submit_trigger = st.form_submit_button("Done")
+                    if submit_trigger:
+                        clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
+                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                         
-                        with st.expander("📄 View Instructions & Formulas"):
-                            desc_content = str(row.get('task_description', 'No instructions.'))
-                            
-                            if any(line.strip().startswith("=") for line in desc_content.split("\n")):
-                                for line in desc_content.split("\n"):
-                                    if line.strip().startswith("="):
-                                        st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                                        st.code(line.strip(), language=None)
-                                        st.markdown("</div>", unsafe_allow_html=True)
-                                    elif line.strip():
-                                        st.write(line.strip())
-                            else:
-                                st.write(desc_content)
-                                
-                            saved_links_str = str(row.get('task_url', '')).strip()
-                            if saved_links_str and saved_links_str != "nan":
-                                for url_item in saved_links_str.split(","):
-                                    if url_item.strip(): st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
-                            saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
-                            if saved_img_b64 and saved_img_b64 != "nan":
-                                try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=220)
-                                except Exception: pass
-                                
-                    with col_action:
-                        col_input, col_btn = st.columns([2.1, 0.9], vertical_alignment="bottom")
-                        with col_input:
-                            result_notes = st.text_area(
-                                label="Action Notes / Results:",
-                                placeholder="Type data updates here...",
-                                key=f"res_{row.get('task_id')}",
-                                height=42,
-                                label_visibility="collapsed"
-                            )
-                        with col_btn:
-                            submit_trigger = st.form_submit_button("Done")
-                            if submit_trigger:
-                                clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
-                                new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                                
-                                new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
-                                eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
-                                save_and_push(eod_df, EOD_FILE)
-                                
-                                orig_idx = df[df['task_id'] == row.get('task_id')].index
-                                if not orig_idx.empty:
-                                    if str(row.get('is_recurring', 'Yes')) == "No": df = df.drop(orig_idx)
-                                    else: df.at[orig_idx[0], 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
-                                    save_and_push(df, DB_FILE)
-                                st.rerun()
+                        new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
+                        eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
+                        save_and_push(eod_df, EOD_FILE)
+                        
+                        orig_idx = df[df['task_id'] == row.get('task_id')].index
+                        if not orig_idx.empty:
+                            if str(row.get('is_recurring', 'Yes')) == "No": df = df.drop(orig_idx)
+                            else: df.at[orig_idx[0], 'last_completed'] = today.strftime(STORAGE_DATE_FORMAT)
+                            save_and_push(df, DB_FILE)
+                        st.rerun()
                 st.markdown("</div>", unsafe_allow_html=True)
-                st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+                st.markdown("<hr style='margin:1.5em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
     # --- TAB 2: NEW TASK ---
@@ -732,29 +760,3 @@ with left_panel:
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
-
-with right_panel:
-    st.header("📅 Monthly Overview")
-    calendar_events = []
-    for index, row in df.iterrows():
-        base_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
-        next_due = base_date + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
-        is_overdue = today >= next_due
-        
-        calendar_display_date = today if is_overdue else next_due
-        event_color = "#EF4444" if is_overdue else "#1E3A8A"
-        
-        formatted_cal_date = calendar_display_date.strftime(STORAGE_DATE_FORMAT)
-        
-        calendar_events.append({
-            "title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}", 
-            "start": formatted_cal_date, 
-            "end": formatted_cal_date, 
-            "backgroundColor": event_color, 
-            "borderColor": event_color, 
-            "allDay": True
-        })
-    for index, row in notes_df.iterrows():
-        n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
-        calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
-    calendar(events=calendar_events, options={"initialView": "dayGridMonth", "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, "editable": False, "selectable": True, "height": "auto", "dayMaxEvents": True, "moreLinkClick": "popover"}, key="monthly_grid_view")
