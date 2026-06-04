@@ -253,7 +253,6 @@ else:
     except Exception:
         df["task_priority"] = 3
 
-# UPGRADE: Added 'doc_attachment_b64' and 'doc_attachment_name' to structural requirements for document handling
 REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
 
 if not os.path.exists(EOD_FILE):
@@ -395,7 +394,7 @@ with main_layout_frame:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (STABLE GRID WITH NO STRAY CODE BLOCKS) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -461,7 +460,6 @@ with main_layout_frame:
                             for f_item in no_formulas:
                                 st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
                                 st.code(f_item, language=None)
-                               _item = None
                                 st.markdown("</div>", unsafe_allow_html=True)
                         else: st.caption("None configured.")
                 else:
@@ -489,7 +487,6 @@ with main_layout_frame:
                         height=68
                     )
                     
-                    # UPGRADE: Added direct Excel/Word File Uploader box using the same logic as base64 screenshots
                     uploaded_doc_file = st.file_uploader(
                         "📎 Attach Deliverable Document (Optional - Excel, Word, PDF, or Sheet Exports):",
                         type=["xlsx", "xls", "docx", "doc", "pdf", "csv"],
@@ -500,7 +497,6 @@ with main_layout_frame:
                     if submit_trigger:
                         clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
                         
-                        # Process uploaded raw files to base64 strings
                         encoded_doc_b64 = ""
                         doc_name_label = ""
                         if uploaded_doc_file is not None:
@@ -538,7 +534,7 @@ with main_layout_frame:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.comnhttps://example2.com")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
                 col_f1, col_f2, col_f3 = st.columns(3)
@@ -769,7 +765,7 @@ with main_layout_frame:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 5: TASK HISTORY (UPGRADED WITH FILE DOWNLOADING SLOTS) ---
+    # --- TAB 5: TASK HISTORY ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
@@ -810,7 +806,6 @@ with main_layout_frame:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} matches found)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 
-                # Render specific text summaries
                 seen_history_blocks = {}
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
@@ -848,7 +843,6 @@ with main_layout_frame:
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
                 
-                # UPGRADE: Loop through records to see if any base64 document attachments exist, rendering an immediate recovery slot
                 st.markdown("### 💾 Recover Logged File Deliverables")
                 file_found = False
                 for _, row in filtered_archive.iterrows():
