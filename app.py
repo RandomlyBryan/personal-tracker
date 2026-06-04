@@ -253,7 +253,8 @@ else:
     except Exception:
         df["task_priority"] = 3
 
-REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64"]
+# UPGRADE: Added 'doc_attachment_b64' and 'doc_attachment_name' to structural requirements for document handling
+REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
 
 if not os.path.exists(EOD_FILE):
     eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
@@ -394,7 +395,7 @@ with main_layout_frame:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS (SIDE-BY-SIDE SIDE FORMULA SPLIT ENGINE) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -418,8 +419,6 @@ with main_layout_frame:
                 st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                 
                 desc_content = str(row.get('task_description', 'No instructions.'))
-                
-                # REFACTOR: Intelligent Grid Splitter for "Yes" and "No" Formula Blocks
                 lines = desc_content.split("\n")
                 has_excel_formulas = any(line.strip().startswith("=") for line in lines)
                 
@@ -428,56 +427,44 @@ with main_layout_frame:
                     no_formulas = []
                     plain_instructions = []
                     
-                    # Sort lines by context type
                     current_bucket = None
                     for line in lines:
                         cleaned_line = line.strip()
-                        if not cleaned_line:
-                            continue
-                        if cleaned_line.lower() == "yes":
-                            current_bucket = "yes"
-                        elif cleaned_line.lower() == "no":
-                            current_bucket = "no"
+                        if not cleaned_line: continue
+                        if cleaned_line.lower() == "yes": current_bucket = "yes"
+                        elif cleaned_line.lower() == "no": current_bucket = "no"
                         elif cleaned_line.startswith("="):
-                            if current_bucket == "yes":
-                                yes_formulas.append(cleaned_line)
-                            elif current_bucket == "no":
-                                no_formulas.append(cleaned_line)
-                            else:
-                                plain_instructions.append(cleaned_line)
+                            if current_bucket == "yes": yes_formulas.append(cleaned_line)
+                            elif current_bucket == "no": no_formulas.append(cleaned_line)
+                            else: plain_instructions.append(cleaned_line)
                         else:
-                            if cleaned_line.lower() not in ["formula to use:", "formula to use"]:
-                                plain_instructions.append(cleaned_line)
+                            if cleaned_line.lower() not in ["formula to use:", "formula to use"]: plain_instructions.append(cleaned_line)
                     
-                    # Display normal instructions up top
                     for inst in plain_instructions:
                         st.markdown(f"**{inst}**")
                     
-                    # UPGRADE: Generate a beautiful, compact side-by-side split column grid
                     st.markdown("#### **📋 Formula Shortcut Guide:**")
                     grid_col_left, grid_col_right = st.columns(2, gap="medium")
                     
                     with grid_col_left:
-                        st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 In Stock:</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 'Yes' Counters:</span>", unsafe_allow_html=True)
                         if yes_formulas:
                             for f_item in yes_formulas:
                                 st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
                                 st.code(f_item, language=None)
                                 st.markdown("</div>", unsafe_allow_html=True)
-                        else:
-                            st.caption("None configured.")
+                        else: st.caption("None configured.")
                             
                     with grid_col_right:
-                        st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 Out of Stock:</span>", unsafe_allow_html=True)
+                        st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 'No' Counters:</span>", unsafe_allow_html=True)
                         if no_formulas:
                             for f_item in no_formulas:
                                 st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
                                 st.code(f_item, language=None)
+                               _item = None
                                 st.markdown("</div>", unsafe_allow_html=True)
-                        else:
-                            st.caption("None configured.")
+                        else: st.caption("None configured.")
                 else:
-                    # Fallback representation for standard plain text logs
                     st.write(desc_content)
                     
                 saved_links_str = str(row.get('task_url', '')).strip()
@@ -496,18 +483,41 @@ with main_layout_frame:
                 st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
                 with st.form(key=f"form_pending_{row.get('task_id')}"):
                     result_notes = st.text_area(
-                        label="Action Notes / Results:",
-                        placeholder="Type data updates here...",
+                        label="Action Notes / Results Summary:",
+                        placeholder="Type verification updates here...",
                         key=f"res_{row.get('task_id')}",
                         height=68
+                    )
+                    
+                    # UPGRADE: Added direct Excel/Word File Uploader box using the same logic as base64 screenshots
+                    uploaded_doc_file = st.file_uploader(
+                        "📎 Attach Deliverable Document (Optional - Excel, Word, PDF, or Sheet Exports):",
+                        type=["xlsx", "xls", "docx", "doc", "pdf", "csv"],
+                        key=f"doc_attach_{row.get('task_id')}"
                     )
                     
                     submit_trigger = st.form_submit_button("Done")
                     if submit_trigger:
                         clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
-                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
                         
-                        new_log_row = {"log_id": new_log_id, "task_title": str(row.get('task_name', 'Manual Log')).strip(), "bullet_text": clean_notes, "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": str(row.get('task_url', '')), "screenshot_b64": str(row.get('task_screenshot_b64', ''))}
+                        # Process uploaded raw files to base64 strings
+                        encoded_doc_b64 = ""
+                        doc_name_label = ""
+                        if uploaded_doc_file is not None:
+                            encoded_doc_b64 = base64.b64encode(uploaded_doc_file.read()).decode('utf-8')
+                            doc_name_label = uploaded_doc_file.name
+                            
+                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                        new_log_row = {
+                            "log_id": new_log_id, 
+                            "task_title": str(row.get('task_name', 'Manual Log')).strip(), 
+                            "bullet_text": clean_notes, 
+                            "log_date": today.strftime(STORAGE_DATE_FORMAT), 
+                            "task_links": str(row.get('task_url', '')), 
+                            "screenshot_b64": str(row.get('task_screenshot_b64', '')),
+                            "doc_attachment_b64": encoded_doc_b64,
+                            "doc_attachment_name": doc_name_label
+                        }
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_and_push(eod_df, EOD_FILE)
                         
@@ -528,7 +538,7 @@ with main_layout_frame:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.comnhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
                 col_f1, col_f2, col_f3 = st.columns(3)
@@ -680,7 +690,7 @@ with main_layout_frame:
                 log_input = st.text_input("Action Detail / Note:")
                 if st.form_submit_button("Add") and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                    eod_df = pd.concat([eod_df, pd.DataFrame([{"log_id": new_log_id, "task_title": manual_title.strip() if manual_title.strip() else "Manual Log", "bullet_text": log_input.strip(), "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": "", "screenshot_b64": ""}])], ignore_index=True)
+                    eod_df = pd.concat([eod_df, pd.DataFrame([{"log_id": new_log_id, "task_title": manual_title.strip() if manual_title.strip() else "Manual Log", "bullet_text": log_input.strip(), "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": "", "screenshot_b64": "", "doc_attachment_b64": "", "doc_attachment_name": ""}])], ignore_index=True)
                     save_and_push(eod_df, EOD_FILE)
                     st.rerun()
         with prio_log_col:
@@ -759,7 +769,7 @@ with main_layout_frame:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 5: TASK HISTORY ---
+    # --- TAB 5: TASK HISTORY (UPGRADED WITH FILE DOWNLOADING SLOTS) ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
@@ -799,8 +809,9 @@ with main_layout_frame:
             else:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} matches found)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
-                seen_history_blocks = {}
                 
+                # Render specific text summaries
+                seen_history_blocks = {}
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
                     title, date_key = row['task_title'], f"📅 Date: {f_date_str}"
@@ -836,3 +847,26 @@ with main_layout_frame:
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
+                
+                # UPGRADE: Loop through records to see if any base64 document attachments exist, rendering an immediate recovery slot
+                st.markdown("### 💾 Recover Logged File Deliverables")
+                file_found = False
+                for _, row in filtered_archive.iterrows():
+                    raw_b64_data = str(row.get('doc_attachment_b64', '')).strip()
+                    if raw_b64_data and raw_b64_data != "nan":
+                        file_found = True
+                        file_name_label = str(row.get('doc_attachment_name', 'downloaded_file.xlsx'))
+                        file_date_stamp = parse_date_safely(row['log_date']).strftime(DATE_FORMAT)
+                        
+                        try:
+                            decoded_binary_payload = base64.b64decode(raw_b64_data)
+                            st.download_button(
+                                label=f"📥 Download Attached Reference: {file_name_label} ({file_date_stamp})",
+                                data=decoded_binary_payload,
+                                file_name=file_name_label,
+                                mime="application/octet-stream",
+                                key=f"dl_btn_{row['log_id']}"
+                            )
+                        except Exception: pass
+                if not file_found:
+                    st.caption("No binary files or spreadsheet attachments found inside current archive filter window.")
