@@ -267,7 +267,7 @@ if not os.path.exists(ARCHIVE_FILE):
     archive_df.to_csv(ARCHIVE_FILE, index=False)
     push_to_github(ARCHIVE_FILE)
 else:
-    archive_df = pd.read_csv(ARCHIVE_FILE)
+    archive_df = pd.read_csv(archive_df)
     archive_df = verify_and_align_columns(archive_df, ARCHIVE_FILE, REQUIRED_LOG_COLUMNS)
 
 if not os.path.exists(NOTES_FILE):
@@ -563,7 +563,7 @@ with left_panel:
                     st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today = None, None, []
                     st.rerun()
 
-# --- TAB 4: EOD REPORT LOG BUILDER ---
+    # --- TAB 4: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -658,7 +658,8 @@ with left_panel:
                 save_and_push(eod_df, EOD_FILE)
                 st.rerun()
         with col_clear_p:
-            if not prio_df.empty && st.button("🗑️ Clear Staged Priorities", use_container_width=True):
+            # FIX: Swapped logical JavaScript-style syntax '&&' out for matching python syntax execution checks
+            if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
                 prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
@@ -732,7 +733,6 @@ with left_panel:
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
 
-# --- RIGHT PANEL: MONTHLY OVERVIEW (DYNAMIC RUNNING ROLLOVER UPDATE) ---
 with right_panel:
     st.header("📅 Monthly Overview")
     calendar_events = []
@@ -741,8 +741,6 @@ with right_panel:
         next_due = base_date + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
         is_overdue = today >= next_due
         
-        # DYNAMIC ROLLOVER ENGINE: If an item is unfinished and its original due date has passed,
-        # it forces the calendar view date context to stick directly to 'today' instead of lagging behind.
         calendar_display_date = today if is_overdue else next_due
         event_color = "#EF4444" if is_overdue else "#1E3A8A"
         
