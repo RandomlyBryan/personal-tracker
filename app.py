@@ -154,7 +154,6 @@ st.markdown(
             border: 1px solid #232936 !important;
         }
         
-        /* Metric block styling adjustments for sleek data aesthetics */
         div[data-testid="stMetricContainer"] {
             background-color: #161920 !important;
             border: 1px solid #232936 !important;
@@ -336,7 +335,7 @@ if overdue_tasks_list:
 main_layout_frame, right_buffer_column = st.columns([12, 1])
 
 with main_layout_frame:
-    # --- SECTION 1: MONTHLY OVERVIEW AT THE VERY TOP ---
+    # --- SECTION 1: MONTHLY OVERVIEW ---
     st.header("📅 Monthly Overview")
     calendar_events = []
     for index, row in df.iterrows():
@@ -361,22 +360,18 @@ with main_layout_frame:
         calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
     calendar(events=calendar_events, options={"initialView": "dayGridMonth", "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, "editable": False, "selectable": True, "height": "auto", "dayMaxEvents": True, "moreLinkClick": "popover"}, key="monthly_grid_view")
 
-    # --- ADDITION: LIVE VELOCITY ANALYTICS METRIC PANEL ---
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("📊 Performance Analytics & Velocity Insights", expanded=False):
         if not archive_df.empty:
             archive_df['parsed_date'] = archive_df['log_date'].apply(parse_date_safely)
             total_tasks_completed = len(archive_df)
-            
             seven_days_ago = today - timedelta(days=7)
             recent_week_df = archive_df[archive_df['parsed_date'] >= seven_days_ago]
             week_completions_count = len(recent_week_df)
             
             m_col1, m_col2 = st.columns(2)
-            with m_col1:
-                st.metric(label="Total Archived Tasks Closed", value=total_tasks_completed)
-            with m_col2:
-                st.metric(label="Tasks Closed (Past 7 Days)", value=week_completions_count)
+            with m_col1: st.metric(label="Total Archived Tasks Closed", value=total_tasks_completed)
+            with m_col2: st.metric(label="Tasks Closed (Past 7 Days)", value=week_completions_count)
                 
             st.markdown("**Daily Production Velocity Profile:**")
             chart_data = archive_df.groupby('log_date').size().reset_index(name='Tasks Completed')
@@ -388,7 +383,7 @@ with main_layout_frame:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- SECTION 2: COMMAND CENTER TABS DIRECTLY BELOW THE CALENDAR ---
+    # --- SECTION 2: COMMAND CENTER TABS ---
     st.header("📋 Command Center")
     
     tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
@@ -399,7 +394,7 @@ with main_layout_frame:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS ---
+    # --- TAB 1: PENDING TASKS (SIDE-BY-SIDE SIDE FORMULA SPLIT ENGINE) ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -423,15 +418,66 @@ with main_layout_frame:
                 st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                 
                 desc_content = str(row.get('task_description', 'No instructions.'))
-                if any(line.strip().startswith("=") for line in desc_content.split("\n")):
-                    for line in desc_content.split("\n"):
-                        if line.strip().startswith("="):
-                            st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
-                            st.code(line.strip(), language=None)
-                            st.markdown("</div>", unsafe_allow_html=True)
-                        elif line.strip():
-                            st.markdown(f"**{line.strip()}**")
+                
+                # REFACTOR: Intelligent Grid Splitter for "Yes" and "No" Formula Blocks
+                lines = desc_content.split("\n")
+                has_excel_formulas = any(line.strip().startswith("=") for line in lines)
+                
+                if has_excel_formulas:
+                    yes_formulas = []
+                    no_formulas = []
+                    plain_instructions = []
+                    
+                    # Sort lines by context type
+                    current_bucket = None
+                    for line in lines:
+                        cleaned_line = line.strip()
+                        if not cleaned_line:
+                            continue
+                        if cleaned_line.lower() == "yes":
+                            current_bucket = "yes"
+                        elif cleaned_line.lower() == "no":
+                            current_bucket = "no"
+                        elif cleaned_line.startswith("="):
+                            if current_bucket == "yes":
+                                yes_formulas.append(cleaned_line)
+                            elif current_bucket == "no":
+                                no_formulas.append(cleaned_line)
+                            else:
+                                plain_instructions.append(cleaned_line)
+                        else:
+                            if cleaned_line.lower() not in ["formula to use:", "formula to use"]:
+                                plain_instructions.append(cleaned_line)
+                    
+                    # Display normal instructions up top
+                    for inst in plain_instructions:
+                        st.markdown(f"**{inst}**")
+                    
+                    # UPGRADE: Generate a beautiful, compact side-by-side split column grid
+                    st.markdown("#### **📋 Formula Shortcut Guide:**")
+                    grid_col_left, grid_col_right = st.columns(2, gap="medium")
+                    
+                    with grid_col_left:
+                        st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 'Yes' Counters:</span>", unsafe_allow_html=True)
+                        if yes_formulas:
+                            for f_item in yes_formulas:
+                                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                                st.code(f_item, language=None)
+                                st.markdown("</div>", unsafe_allow_html=True)
+                        else:
+                            st.caption("None configured.")
+                            
+                    with grid_col_right:
+                        st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 'No' Counters:</span>", unsafe_allow_html=True)
+                        if no_formulas:
+                            for f_item in no_formulas:
+                                st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
+                                st.code(f_item, language=None)
+                                st.markdown("</div>", unsafe_allow_html=True)
+                        else:
+                            st.caption("None configured.")
                 else:
+                    # Fallback representation for standard plain text logs
                     st.write(desc_content)
                     
                 saved_links_str = str(row.get('task_url', '')).strip()
@@ -440,7 +486,7 @@ with main_layout_frame:
                     for idx, url_item in enumerate(saved_links_str.split(",")):
                         if url_item.strip():
                             with link_cols[idx % 4]:
-                                st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
+                                st.link_button(f"🔗 Open Reference Link", url=url_item.strip(), use_container_width=True)
                 
                 saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
                 if saved_img_b64 and saved_img_b64 != "nan":
@@ -661,8 +707,7 @@ with main_layout_frame:
                     for note in entries: grouped_lines.append(f"• {note}")
                 else:
                     grouped_lines.append(f"• {title}:")
-                    for note in entries:
-                        grouped_lines.append(f"  - {note}")
+                    for note in entries: grouped_lines.append(f"  - {note}")
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
         else: compiled_report = f"{emp_header}• (No work logged yet today.)"
             
@@ -714,16 +759,15 @@ with main_layout_frame:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 5: TASK HISTORY (UPGRADED WITH SEARCH & FILTER ENGINE) ---
+    # --- TAB 5: TASK HISTORY ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
-        # UPGRADE: Advanced filtration tools built straight onto the archive workspace header
         search_col, filter_col, download_col = st.columns([2.0, 1.5, 1.5], vertical_alignment="bottom")
         with search_col:
-            history_search_query = st.text_input("🔍 Search logs by keyword or formula:", value="", placeholder="Type task title, notes, or formulas...")
+            history_search_query = st.text_input("🔍 Search logs by keyword or formula:", value="", placeholder="Type task title, notes, or formulas...", key="hist_search_f")
         with filter_col:
-            range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
+            range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"], key="hist_date_f")
             
         if archive_df.empty: 
             st.info("Your master archive file is currently empty.")
@@ -743,7 +787,6 @@ with main_layout_frame:
             
             filtered_archive = archive_df.copy() if range_selection == "All Logs" else archive_df[(archive_df['parsed_date'] >= filter_start) & (archive_df['parsed_date'] <= filter_end)]
             
-            # UPGRADE: Apply live string query filters matching text records inside columns
             if history_search_query.strip():
                 query = history_search_query.lower().strip()
                 filtered_archive = filtered_archive[
