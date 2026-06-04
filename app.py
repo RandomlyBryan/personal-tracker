@@ -1,51 +1,41 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import os
-import smtplib
-import base64
-import requests
-from streamlit_calendar import calendar
-import streamlit.components.v1 as components
+# ... (keep other imports)
 
-# 1. Page Configuration
+# 1. Page Configuration & CSS
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
 # CSS: Reinforced Calendar Unwrapping
 st.markdown(
     """
     <style>
-        /* Force Calendar Containers to be fluid height */
+        /* Force Calendar Containers to be fluid height and wrap text */
         .fc .fc-daygrid-event {
             white-space: normal !important;
             height: auto !important;
+            word-wrap: break-word !important;
         }
-        .fc-event-main {
+        .fc-event-main, .fc-event-title {
             white-space: normal !important;
-        }
-        .fc-event-title {
-            white-space: normal !important;
-        }
-        /* Ensure the Daygrid row grows with content */
-        .fc-daygrid-body, .fc-scrollgrid-sync-table {
-            height: auto !important;
+            overflow: visible !important;
         }
     </style>
     """,
     unsafe_allow_html=True
 )
 
-# ... (Keep your existing data loading, database checks, and helper functions)
+# ... (Include your database initialization block here)
 
-# --- REVISED CALENDAR BLOCK ---
-# Using a simpler options dictionary to avoid the string-execution error
+# 2. Define Calendar Options BEFORE calling the calendar component
 calendar_options = {
     "initialView": "dayGridMonth", 
     "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, 
     "editable": False, 
     "selectable": True, 
     "height": "auto", 
-    "dayMaxEvents": True,
+    "dayMaxEvents": True, # This handles the "More" link for long days
 }
 
+# 3. Call the calendar component now that options is defined
 calendar(events=calendar_events, options=calendar_options, key="monthly_grid_view")
