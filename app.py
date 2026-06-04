@@ -344,7 +344,7 @@ with left_panel:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS (AUTOMATIC LINE-BY-LINE COPY BOX ENGINE) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -374,8 +374,6 @@ with left_panel:
                         with st.expander("📄 View Instructions & Formulas"):
                             desc_content = str(row.get('task_description', 'No instructions.'))
                             
-                            # PARSER ENGINE: Checks the task details line-by-line. 
-                            # If a line starts with an equals sign (=), it wraps it in a quick-copy block.
                             if any(line.strip().startswith("=") for line in desc_content.split("\n")):
                                 for line in desc_content.split("\n"):
                                     if line.strip().startswith("="):
@@ -426,13 +424,12 @@ with left_panel:
                 st.markdown("<hr style='margin:0.4em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
-    # --- TAB 2: NEW TASK (REORGANIZED & CLEAN) ---
+    # --- TAB 2: NEW TASK ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
         with sub_tab_task:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
-                # TIP: Paste your formula configurations directly into this Instructions text area
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
                 bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
@@ -566,7 +563,7 @@ with left_panel:
                     st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today = None, None, []
                     st.rerun()
 
-    # --- TAB 4: EOD REPORT LOG BUILDER ---
+# --- TAB 4: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
         st.markdown("**📋 Quick Copy**")
@@ -661,7 +658,7 @@ with left_panel:
                 save_and_push(eod_df, EOD_FILE)
                 st.rerun()
         with col_clear_p:
-            if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
+            if not prio_df.empty && st.button("🗑️ Clear Staged Priorities", use_container_width=True):
                 prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
@@ -735,6 +732,7 @@ with left_panel:
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
 
+# --- RIGHT PANEL: MONTHLY OVERVIEW (DYNAMIC RUNNING ROLLOVER UPDATE) ---
 with right_panel:
     st.header("📅 Monthly Overview")
     calendar_events = []
@@ -742,8 +740,22 @@ with right_panel:
         base_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
         next_due = base_date + timedelta(days=get_days_interval(row.get('frequency', 'Daily')))
         is_overdue = today >= next_due
+        
+        # DYNAMIC ROLLOVER ENGINE: If an item is unfinished and its original due date has passed,
+        # it forces the calendar view date context to stick directly to 'today' instead of lagging behind.
+        calendar_display_date = today if is_overdue else next_due
         event_color = "#EF4444" if is_overdue else "#1E3A8A"
-        calendar_events.append({"title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}", "start": next_due.strftime(STORAGE_DATE_FORMAT), "end": next_due.strftime(STORAGE_DATE_FORMAT), "backgroundColor": event_color, "borderColor": event_color, "allDay": True})
+        
+        formatted_cal_date = calendar_display_date.strftime(STORAGE_DATE_FORMAT)
+        
+        calendar_events.append({
+            "title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}", 
+            "start": formatted_cal_date, 
+            "end": formatted_cal_date, 
+            "backgroundColor": event_color, 
+            "borderColor": event_color, 
+            "allDay": True
+        })
     for index, row in notes_df.iterrows():
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
