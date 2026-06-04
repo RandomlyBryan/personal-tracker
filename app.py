@@ -774,7 +774,7 @@ with main_layout_frame:
 
     # --- SECTION 2: COMMAND CENTER TABS ---
 
-    st.header("📋 Command Center")
+    st.header("🖥️ Command Center 🖥️")
 
     
 
