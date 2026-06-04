@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
-# CUSTOM CSS: SUPERCHARGED UNWRAP LAYOUT ENGINE FOR FULL CALENDAR VISIBILITY
+# CUSTOM CSS: SLEEK DARK MODE THEME ENGINE WITH NEW FULL TITLES CALENDAR LOGIC
 st.markdown(
     """
     <style>
@@ -64,33 +64,11 @@ st.markdown(
             box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* THE ULTIMATE CALENDAR TEXT UNWRAP ENGINE */
-        .fc-event, 
-        .fc-event-main, 
-        .fc-event-title, 
-        .fc-daygrid-event, 
-        .fc-daygrid-block-event,
-        .fc-daygrid-event-holder,
-        .fc-event-title-container,
-        div.fc-event-main-frame {
+        /* UNWRAP CALENDAR OVERRIDES FOR HIGH LEVEL CONTROLS */
+        .fc-event, .fc-event-main, .fc-event-title, .fc-daygrid-event {
             white-space: normal !important;
             word-wrap: break-word !important;
             overflow: visible !important;
-            text-overflow: clip !important;
-            display: block !important;
-            height: auto !important;
-            min-height: min-content !important;
-            line-height: 1.4 !important;
-        }
-        
-        /* Adjust cell internal heights slightly so multiple multi-line blocks sit comfortably */
-        .fc-daygrid-day-events {
-            margin-bottom: 4px !important;
-        }
-        .fc-daygrid-event {
-            margin-top: 3px !important;
-            margin-bottom: 3px !important;
-            padding: 4px 6px !important;
         }
         
         /* CLEAN INLINE QUICK COPY CONTAINERS */
@@ -387,7 +365,32 @@ with main_layout_frame:
     for index, row in notes_df.iterrows():
         n_date = parse_date_safely(row['event_date']).strftime(STORAGE_DATE_FORMAT)
         calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
-    calendar(events=calendar_events, options={"initialView": "dayGridMonth", "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, "editable": False, "selectable": True, "height": "auto", "dayMaxEvents": True, "moreLinkClick": "popover"}, key="monthly_grid_view")
+    
+    # UPGRADE: Added native eventContent injection logic directly into FullCalendar options dictionary.
+    # This renders names inside a custom styled HTML wrapper to force word wrapping inside the Shadow DOM layer.
+    calendar_options_config = {
+        "initialView": "dayGridMonth", 
+        "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, 
+        "editable": False, 
+        "selectable": True, 
+        "height": "auto", 
+        "dayMaxEvents": True, 
+        "moreLinkClick": "popover",
+        "eventContent": """
+            function(arg) {
+                let domElement = document.createElement('div');
+                domElement.style.whiteSpace = 'normal';
+                domElement.style.wordWrap = 'break-word';
+                domElement.style.fontSize = '12px';
+                domElement.style.fontWeight = 'bold';
+                domElement.style.padding = '2px';
+                domElement.innerText = arg.event.title;
+                return { domNodes: [domElement] };
+            }
+        """
+    }
+    
+    calendar(events=calendar_events, options=calendar_options_config, key="monthly_grid_view")
 
     st.markdown("<br>", unsafe_allow_html=True)
     with st.expander("📊 Performance Analytics & Velocity Insights", expanded=False):
@@ -563,7 +566,7 @@ with main_layout_frame:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.comnhttps://example2.com")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
                 col_f1, col_f2, col_f3 = st.columns(3)
