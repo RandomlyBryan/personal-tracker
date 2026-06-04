@@ -255,7 +255,8 @@ else:
 
 REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
 
-if not os.path.exists(EOD_FILE):
+# Fail-safe initialization to verify size of file handles to avoid EmptyDataError crashes
+if not os.path.exists(EOD_FILE) or os.path.getsize(EOD_FILE) == 0:
     eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     eod_df.to_csv(EOD_FILE, index=False)
     push_to_github(EOD_FILE)
@@ -263,7 +264,8 @@ else:
     eod_df = pd.read_csv(EOD_FILE)
     eod_df = verify_and_align_columns(eod_df, EOD_FILE, REQUIRED_LOG_COLUMNS)
 
-if not os.path.exists(ARCHIVE_FILE):
+# FIX: Added an extra size protection validation check on the archive file to fix the crash
+if not os.path.exists(ARCHIVE_FILE) or os.path.getsize(ARCHIVE_FILE) == 0:
     archive_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     archive_df.to_csv(ARCHIVE_FILE, index=False)
     push_to_github(ARCHIVE_FILE)
@@ -271,14 +273,14 @@ else:
     archive_df = pd.read_csv(ARCHIVE_FILE)
     archive_df = verify_and_align_columns(archive_df, ARCHIVE_FILE, REQUIRED_LOG_COLUMNS)
 
-if not os.path.exists(NOTES_FILE):
+if not os.path.exists(NOTES_FILE) or os.path.getsize(NOTES_FILE) == 0:
     notes_df = pd.DataFrame(columns=["note_id", "title", "details", "event_date"])
     notes_df.to_csv(NOTES_FILE, index=False)
     push_to_github(NOTES_FILE)
 else:
     notes_df = pd.read_csv(NOTES_FILE)
 
-if not os.path.exists(PRIORITIES_FILE):
+if not os.path.exists(PRIORITIES_FILE) or os.path.getsize(PRIORITIES_FILE) == 0:
     prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
     prio_df.to_csv(PRIORITIES_FILE, index=False)
     push_to_github(PRIORITIES_FILE)
@@ -394,7 +396,7 @@ with main_layout_frame:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS (STABLE GRID WITH NO STRAY CODE BLOCKS) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
