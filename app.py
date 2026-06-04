@@ -267,7 +267,8 @@ if not os.path.exists(ARCHIVE_FILE):
     archive_df.to_csv(ARCHIVE_FILE, index=False)
     push_to_github(ARCHIVE_FILE)
 else:
-    archive_df = pd.read_csv(archive_df)
+    # FIX: Corrected target string variable to ARCHIVE_FILE constant to fix the NameError initialization crash
+    archive_df = pd.read_csv(ARCHIVE_FILE)
     archive_df = verify_and_align_columns(archive_df, ARCHIVE_FILE, REQUIRED_LOG_COLUMNS)
 
 if not os.path.exists(NOTES_FILE):
@@ -658,7 +659,6 @@ with left_panel:
                 save_and_push(eod_df, EOD_FILE)
                 st.rerun()
         with col_clear_p:
-            # FIX: Swapped logical JavaScript-style syntax '&&' out for matching python syntax execution checks
             if not prio_df.empty and st.button("🗑️ Clear Staged Priorities", use_container_width=True):
                 prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
                 save_and_push(prio_df, PRIORITIES_FILE)
