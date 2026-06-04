@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
-# CUSTOM CSS: SLEEK DARK MODE THEME ENGINE WITH NEW FULL TITLES CALENDAR LOGIC
+# CUSTOM CSS: SUPERCHARGED UNWRAP LAYOUT ENGINE FOR FULL CALENDAR VISIBILITY
 st.markdown(
     """
     <style>
@@ -64,14 +64,33 @@ st.markdown(
             box-shadow: 0 0 4px #0284C7 !important;
         }
         
-        /* CALENDAR UPGRADE: CSS INJECTIONS FOR TEXT WRAPPING AND FULL TITLE VISIBILITY */
-        .fc-event-title, .fc-event, .fc-daygrid-event, .fc-daygrid-block-event {
+        /* THE ULTIMATE CALENDAR TEXT UNWRAP ENGINE */
+        .fc-event, 
+        .fc-event-main, 
+        .fc-event-title, 
+        .fc-daygrid-event, 
+        .fc-daygrid-block-event,
+        .fc-daygrid-event-holder,
+        .fc-event-title-container,
+        div.fc-event-main-frame {
             white-space: normal !important;
             word-wrap: break-word !important;
             overflow: visible !important;
+            text-overflow: clip !important;
             display: block !important;
-            line-height: 1.3 !important;
-            padding: 3px 5px !important;
+            height: auto !important;
+            min-height: min-content !important;
+            line-height: 1.4 !important;
+        }
+        
+        /* Adjust cell internal heights slightly so multiple multi-line blocks sit comfortably */
+        .fc-daygrid-day-events {
+            margin-bottom: 4px !important;
+        }
+        .fc-daygrid-event {
+            margin-top: 3px !important;
+            margin-bottom: 3px !important;
+            padding: 4px 6px !important;
         }
         
         /* CLEAN INLINE QUICK COPY CONTAINERS */
@@ -544,7 +563,7 @@ with main_layout_frame:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.comnhttps://example2.com")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
                 col_f1, col_f2, col_f3 = st.columns(3)
