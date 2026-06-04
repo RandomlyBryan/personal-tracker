@@ -13,7 +13,7 @@ import streamlit.components.v1 as components
 # 1. Page Configuration
 st.set_page_config(page_title="Personal Task Tracker", layout="wide")
 
-# CUSTOM CSS: SLEEK DARK MODE THEME ENGINE (MATTE CHARCOAL & ELECTRIC BLUE)
+# CUSTOM CSS: SLEEK DARK MODE THEME ENGINE WITH NEW FULL TITLES CALENDAR LOGIC
 st.markdown(
     """
     <style>
@@ -62,6 +62,16 @@ st.markdown(
         div[data-baseweb="input"]:focus-within, div[data-baseweb="textarea"]:focus-within {
             border-color: #0284C7 !important;
             box-shadow: 0 0 4px #0284C7 !important;
+        }
+        
+        /* CALENDAR UPGRADE: CSS INJECTIONS FOR TEXT WRAPPING AND FULL TITLE VISIBILITY */
+        .fc-event-title, .fc-event, .fc-daygrid-event, .fc-daygrid-block-event {
+            white-space: normal !important;
+            word-wrap: break-word !important;
+            overflow: visible !important;
+            display: block !important;
+            line-height: 1.3 !important;
+            padding: 3px 5px !important;
         }
         
         /* CLEAN INLINE QUICK COPY CONTAINERS */
@@ -255,7 +265,6 @@ else:
 
 REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
 
-# Fail-safe initialization to verify size of file handles to avoid EmptyDataError crashes
 if not os.path.exists(EOD_FILE) or os.path.getsize(EOD_FILE) == 0:
     eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     eod_df.to_csv(EOD_FILE, index=False)
@@ -264,7 +273,6 @@ else:
     eod_df = pd.read_csv(EOD_FILE)
     eod_df = verify_and_align_columns(eod_df, EOD_FILE, REQUIRED_LOG_COLUMNS)
 
-# FIX: Added an extra size protection validation check on the archive file to fix the crash
 if not os.path.exists(ARCHIVE_FILE) or os.path.getsize(ARCHIVE_FILE) == 0:
     archive_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
     archive_df.to_csv(ARCHIVE_FILE, index=False)
