@@ -49,7 +49,6 @@ st.markdown(
             color: #38BDF8 !important;
             border: 1px solid #0284C7 !important;
             font-weight: bold !important;
-            
         }
         [data-testid="stWidgetLabel"] p {
             color: #94A3B8 !important;
@@ -155,6 +154,14 @@ st.markdown(
             border: 1px solid #232936 !important;
         }
         
+        /* Metric block styling adjustments for sleek data aesthetics */
+        div[data-testid="stMetricContainer"] {
+            background-color: #161920 !important;
+            border: 1px solid #232936 !important;
+            border-radius: 6px;
+            padding: 10px 14px !important;
+        }
+        
         .stars-container {
             color: #F59E0B !important;
             font-weight: bold;
@@ -175,13 +182,7 @@ ARCHIVE_FILE = "eod_master_archive.csv"
 DATE_FORMAT = "%d/%m/%Y"
 STORAGE_DATE_FORMAT = "%Y-%m-%d"
 
-STAR_OPTIONS = [
-    "⭐",
-    "⭐⭐",
-    "⭐⭐⭐",
-    "⭐⭐⭐⭐",
-    "⭐⭐⭐⭐⭐"
-]
+STAR_OPTIONS = ["⭐", "⭐⭐", "⭐⭐⭐", "⭐⭐⭐⭐", "⭐⭐⭐⭐⭐"]
 
 if "editing_task_id" not in st.session_state: st.session_state.editing_task_id = None
 if "editing_note_id" not in st.session_state: st.session_state.editing_note_id = None
@@ -332,7 +333,6 @@ if overdue_tasks_list:
     js_notification_code = f"<script>setTimeout(function(){{ if(Notification.permission==='granted'){{ new Notification('⏰ Overdue Routines Alert', {{ body: '{alert_summary}' }}); }} }}, 1000);</script>"
     components.html(js_notification_code, height=0, width=0)
 
-# REFACTOR: Swapped column layout proportions from side-by-side [1, 1] to a primary single panel frame
 main_layout_frame, right_buffer_column = st.columns([12, 1])
 
 with main_layout_frame:
@@ -346,7 +346,6 @@ with main_layout_frame:
         
         calendar_display_date = today if is_overdue else next_due
         event_color = "#EF4444" if is_overdue else "#1E3A8A"
-        
         formatted_cal_date = calendar_display_date.strftime(STORAGE_DATE_FORMAT)
         
         calendar_events.append({
@@ -362,7 +361,32 @@ with main_layout_frame:
         calendar_events.append({"title": f"📌 {row['title']}", "start": n_date, "end": n_date, "backgroundColor": "#334155", "borderColor": "#334155", "allDay": True})
     calendar(events=calendar_events, options={"initialView": "dayGridMonth", "headerToolbar": { "left": "prev,next today", "center": "title", "right": "" }, "editable": False, "selectable": True, "height": "auto", "dayMaxEvents": True, "moreLinkClick": "popover"}, key="monthly_grid_view")
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    # --- ADDITION: LIVE VELOCITY ANALYTICS METRIC PANEL ---
+    st.markdown("<br>", unsafe_allow_html=True)
+    with st.expander("📊 Performance Analytics & Velocity Insights", expanded=False):
+        if not archive_df.empty:
+            archive_df['parsed_date'] = archive_df['log_date'].apply(parse_date_safely)
+            total_tasks_completed = len(archive_df)
+            
+            seven_days_ago = today - timedelta(days=7)
+            recent_week_df = archive_df[archive_df['parsed_date'] >= seven_days_ago]
+            week_completions_count = len(recent_week_df)
+            
+            m_col1, m_col2 = st.columns(2)
+            with m_col1:
+                st.metric(label="Total Archived Tasks Closed", value=total_tasks_completed)
+            with m_col2:
+                st.metric(label="Tasks Closed (Past 7 Days)", value=week_completions_count)
+                
+            st.markdown("**Daily Production Velocity Profile:**")
+            chart_data = archive_df.groupby('log_date').size().reset_index(name='Tasks Completed')
+            chart_data = chart_data.sort_values(by='log_date').tail(10)
+            chart_data = chart_data.set_index('log_date')
+            st.bar_chart(chart_data, color="#38BDF8")
+        else:
+            st.info("Analytics metrics will populate automatically here as actions are moved into the history archives.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     # --- SECTION 2: COMMAND CENTER TABS DIRECTLY BELOW THE CALENDAR ---
     st.header("📋 Command Center")
@@ -375,7 +399,7 @@ with main_layout_frame:
         "📊 Task History"
     ])
     
-    # --- TAB 1: PENDING TASKS (REORGANIZED INSTRUCTIONS ABOVE THE FORM INPUT BOX) ---
+    # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
         
@@ -398,7 +422,6 @@ with main_layout_frame:
                 st.markdown(f"### **{row.get('task_name', 'Unnamed Task')}** <span class='stars-container'>{star_render_string}</span>", unsafe_allow_html=True)
                 st.caption(f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}*")
                 
-                # REFACTOR: Render task details and formulas inline right away instead of inside an expander
                 desc_content = str(row.get('task_description', 'No instructions.'))
                 if any(line.strip().startswith("=") for line in desc_content.split("\n")):
                     for line in desc_content.split("\n"):
@@ -407,16 +430,16 @@ with main_layout_frame:
                             st.code(line.strip(), language=None)
                             st.markdown("</div>", unsafe_allow_html=True)
                         elif line.strip():
-                            st.write(line.strip())
+                            st.markdown(f"**{line.strip()}**")
                 else:
                     st.write(desc_content)
                     
                 saved_links_str = str(row.get('task_url', '')).strip()
                 if saved_links_str and saved_links_str != "nan":
-                    link_cols = st.columns(len(saved_links_str.split(",")))
+                    link_cols = st.columns(min(max(len(saved_links_str.split(",")), 1), 4))
                     for idx, url_item in enumerate(saved_links_str.split(",")):
                         if url_item.strip():
-                            with link_cols[idx]:
+                            with link_cols[idx % 4]:
                                 st.link_button(f"🔗 Open: {url_item[:35]}...", url=url_item.strip(), use_container_width=True)
                 
                 saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
@@ -424,7 +447,6 @@ with main_layout_frame:
                     try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=350)
                     except Exception: pass
                 
-                # REFACTOR: The updates field and submit button now stack cleanly directly below the instructions
                 st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
                 with st.form(key=f"form_pending_{row.get('task_id')}"):
                     result_notes = st.text_area(
@@ -692,11 +714,14 @@ with main_layout_frame:
                 save_and_push(prio_df, PRIORITIES_FILE)
                 st.rerun()
 
-    # --- TAB 5: TASK HISTORY ---
+    # --- TAB 5: TASK HISTORY (UPGRADED WITH SEARCH & FILTER ENGINE) ---
     with tab_archive:
         st.subheader("📊 Completed Task History")
         
-        filter_col, download_col = st.columns([2.5, 1.5], vertical_alignment="bottom")
+        # UPGRADE: Advanced filtration tools built straight onto the archive workspace header
+        search_col, filter_col, download_col = st.columns([2.0, 1.5, 1.5], vertical_alignment="bottom")
+        with search_col:
+            history_search_query = st.text_input("🔍 Search logs by keyword or formula:", value="", placeholder="Type task title, notes, or formulas...")
         with filter_col:
             range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"])
             
@@ -718,10 +743,18 @@ with main_layout_frame:
             
             filtered_archive = archive_df.copy() if range_selection == "All Logs" else archive_df[(archive_df['parsed_date'] >= filter_start) & (archive_df['parsed_date'] <= filter_end)]
             
+            # UPGRADE: Apply live string query filters matching text records inside columns
+            if history_search_query.strip():
+                query = history_search_query.lower().strip()
+                filtered_archive = filtered_archive[
+                    filtered_archive['task_title'].str.lower().str.contains(query) | 
+                    filtered_archive['bullet_text'].str.lower().str.contains(query)
+                ]
+            
             if filtered_archive.empty: 
-                st.warning("No archived rows match selected window filter.")
+                st.warning("No archived rows match selected window filters or query term.")
             else:
-                st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} actions logged)")
+                st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} matches found)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
                 seen_history_blocks = {}
                 
@@ -750,7 +783,7 @@ with main_layout_frame:
                 
                 with download_col:
                     st.download_button(
-                        label="📥 Download History (.txt)",
+                        label="📥 Download Filtered History (.txt)",
                         data=compiled_text_history,
                         file_name=f"task_history_export_{range_selection.lower().replace(' ', '_')}.txt",
                         mime="text/plain",
