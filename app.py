@@ -1512,7 +1512,7 @@ with main_layout_frame:
 
         with col_clear_w:
 
-            if not eod_df.empty and st.button("✅ Clear Task Logged", use_container_width=True):
+            if not eod_df.empty and st.button("✅ Clear Task Log", use_container_width=True):
 
                 archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
 
