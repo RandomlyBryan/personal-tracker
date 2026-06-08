@@ -280,7 +280,8 @@ else:
     except Exception:
         df["task_priority"] = 3
 
-REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
+REQUIRED_LOG_COLUMNS = ["log_id", "task_title", "bullet_text", "log_date", "log_timestamp", "task_links", "screenshot_b64", "doc_attachment_b64", "doc_attachment_name"]
+AUTO_ARCHIVE_INACTIVITY_HOURS = 10
 
 if not os.path.exists(EOD_FILE) or os.path.getsize(EOD_FILE) == 0:
     eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
@@ -372,7 +373,45 @@ def anchor_base_due_date_if_needed(df, today):
     return df, changed
 
 
-def send_email_notification(task_name, days_overdue, description, resource_url):
+def auto_archive_if_inactive(eod_df, archive_df):
+    """
+    Auto-archives the EOD log if the most recent entry's timestamp
+    is older than AUTO_ARCHIVE_INACTIVITY_HOURS. This is shift-aware —
+    it doesn't care about midnight, only about how long since you last
+    touched the log. Safe for shifts ending at 2 AM or later.
+
+    Returns (eod_df, archive_df, was_archived, archived_date_label)
+    """
+    if eod_df.empty:
+        return eod_df, archive_df, False, None
+
+    # Read the most recent timestamp from the log
+    ts_col = "log_timestamp"
+    if ts_col not in eod_df.columns or eod_df[ts_col].fillna("").eq("").all():
+        # No timestamps yet (legacy rows) — fall back to log_date only,
+        # treat as start of that day so we don't accidentally wipe a fresh log
+        return eod_df, archive_df, False, None
+
+    try:
+        latest_ts = pd.to_datetime(
+            eod_df[ts_col].dropna().replace("", pd.NA).dropna()
+        ).max()
+    except Exception:
+        return eod_df, archive_df, False, None
+
+    if pd.isna(latest_ts):
+        return eod_df, archive_df, False, None
+
+    hours_since = (datetime.now() - latest_ts.to_pydatetime()).total_seconds() / 3600
+    if hours_since >= AUTO_ARCHIVE_INACTIVITY_HOURS:
+        archived_date = latest_ts.strftime(DATE_FORMAT)
+        archive_df = pd.concat([archive_df, eod_df], ignore_index=True)
+        save_and_push(archive_df, ARCHIVE_FILE)
+        eod_df = pd.DataFrame(columns=REQUIRED_LOG_COLUMNS)
+        save_and_push(eod_df, EOD_FILE)
+        return eod_df, archive_df, True, archived_date
+
+    return eod_df, archive_df, False, None
     try:
         secret_cfg = st.secrets["email"]
         msg = MIMEMultipart()
@@ -393,11 +432,16 @@ today = datetime.now().date()
 tomorrow = today + timedelta(days=1)
 
 # --- ANCHOR OVERDUE BASE DATES ON LOAD ---
-# This runs once per session load. For any task that is overdue and has no
-# base_due_date yet, we stamp the original due date right now so it's preserved.
 df, anchoring_changed = anchor_base_due_date_if_needed(df, today)
 if anchoring_changed:
     save_and_push(df, DB_FILE)
+
+# --- AUTO-ARCHIVE ON INACTIVITY ---
+# Runs silently on every load. If EOD log hasn't been touched in 10+ hours,
+# it moves everything to the master archive automatically.
+eod_df, archive_df, was_auto_archived, auto_archive_date = auto_archive_if_inactive(eod_df, archive_df)
+if was_auto_archived:
+    st.toast(f"✅ EOD log from {auto_archive_date} was auto-archived after 10 hours of inactivity.", icon="🗂️")
 
 # --- ALERTS MANAGEMENT ---
 overdue_tasks_list = []
@@ -625,6 +669,7 @@ with main_layout_frame:
                             "task_title": str(row.get('task_name', 'Manual Log')).strip(),
                             "bullet_text": clean_notes,
                             "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                            "log_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "task_links": str(row.get('task_url', '')),
                             "screenshot_b64": str(row.get('task_screenshot_b64', '')),
                             "doc_attachment_b64": encoded_doc_b64,
@@ -852,6 +897,24 @@ with main_layout_frame:
     # --- TAB 4: EOD REPORT LOG BUILDER ---
     with tab_eod:
         st.subheader("Daily Task Report")
+
+        # --- INACTIVITY TIMER STATUS ---
+        if not eod_df.empty and "log_timestamp" in eod_df.columns:
+            ts_vals = eod_df["log_timestamp"].replace("", pd.NA).dropna()
+            if not ts_vals.empty:
+                try:
+                    latest_ts = pd.to_datetime(ts_vals).max().to_pydatetime()
+                    hours_since = (datetime.now() - latest_ts).total_seconds() / 3600
+                    hours_left = AUTO_ARCHIVE_INACTIVITY_HOURS - hours_since
+                    if hours_left > 1:
+                        st.caption(f"🕒 Auto-archive in ~{hours_left:.1f} hrs if no new entries are added.")
+                    elif hours_left > 0:
+                        st.warning(f"⚠️ Auto-archive in less than 1 hour — last entry was {hours_since:.1f} hrs ago.")
+                    else:
+                        st.info("🗂️ EOD log will be archived on next app reload.")
+                except Exception:
+                    pass
+
         st.markdown("**📋 Quick Copy**")
         
         st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
@@ -869,7 +932,14 @@ with main_layout_frame:
                 log_input = st.text_input("Action Detail / Note:")
                 if st.form_submit_button("Add") and log_input:
                     new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
-                    eod_df = pd.concat([eod_df, pd.DataFrame([{"log_id": new_log_id, "task_title": manual_title.strip() if manual_title.strip() else "Manual Log", "bullet_text": log_input.strip(), "log_date": today.strftime(STORAGE_DATE_FORMAT), "task_links": "", "screenshot_b64": "", "doc_attachment_b64": "", "doc_attachment_name": ""}])], ignore_index=True)
+                    eod_df = pd.concat([eod_df, pd.DataFrame([{
+                        "log_id": new_log_id,
+                        "task_title": manual_title.strip() if manual_title.strip() else "Manual Log",
+                        "bullet_text": log_input.strip(),
+                        "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                        "log_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "task_links": "", "screenshot_b64": "", "doc_attachment_b64": "", "doc_attachment_name": ""
+                    }])], ignore_index=True)
                     save_and_push(eod_df, EOD_FILE)
                     st.rerun()
         with prio_log_col:
