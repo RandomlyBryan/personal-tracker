@@ -63,8 +63,6 @@ st.markdown(
             border-color: #0284C7 !important;
             box-shadow: 0 0 4px #0284C7 !important;
         }
-        
-        /* CLEAN INLINE QUICK COPY CONTAINERS */
         div.clean-copy code {
             background-color: transparent !important;
             border: none !important;
@@ -79,8 +77,6 @@ st.markdown(
             margin-bottom: 6px !important;
             padding: 2px 10px !important;
         }
-        
-        /* SUMMARY CODE MODULES */
         div.clean-report-block [data-testid="stCodeBlock"] {
             background-color: #090B0E !important;
             border: 1px solid #2D3748 !important;
@@ -96,7 +92,6 @@ st.markdown(
             line-height: 1.5 !important;
             white-space: pre-wrap !important;
         }
-        
         div.pending-row-form button {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -115,7 +110,6 @@ st.markdown(
             padding: 0 !important;
             background-color: transparent !important;
         }
-        
         button[kind="secondary"] {
             background-color: #0284C7 !important;
             color: #FFFFFF !important;
@@ -153,22 +147,18 @@ st.markdown(
             background-color: #161920 !important;
             border: 1px solid #232936 !important;
         }
-        
         div[data-testid="stMetricContainer"] {
             background-color: #161920 !important;
             border: 1px solid #232936 !important;
             border-radius: 6px;
             padding: 10px 14px !important;
         }
-        
         .stars-container {
             color: #F59E0B !important;
             font-weight: bold;
             letter-spacing: 3px;
             margin-left: 6px;
         }
-
-        /* OVERDUE BADGE */
         .overdue-badge {
             display: inline-block;
             background-color: #7F1D1D;
@@ -205,22 +195,25 @@ if "duplicating_task_id" not in st.session_state: st.session_state.duplicating_t
 if "completing_note_id" not in st.session_state: st.session_state.completing_note_id = None
 
 
+# ── SAFE ID HELPER ───────────────────────────────────────────────────────────
+# Prevents int(NaN) crashes when a column contains corrupted/missing ID values.
+def next_id(series):
+    valid = pd.to_numeric(series, errors='coerce').dropna()
+    return int(valid.max() + 1) if not valid.empty else 1
+
+
 def push_to_github(filename):
     try:
         cfg = st.secrets["github"]
         token = cfg["token"]
         repo = cfg["repo"]
         branch = cfg["branch"]
-        
         url = f"[api.github.com](https://api.github.com/repos/{repo}/contents/{filename})"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
-        
         res = requests.get(url, headers=headers, params={"ref": branch})
         sha = res.json().get("sha") if res.status_code == 200 else None
-        
         with open(filename, "rb") as f:
             encoded_content = base64.b64encode(f.read()).decode("utf-8")
-            
         payload = {
             "message": f"🤖 Automated Dashboard Sync: Update {filename}",
             "content": encoded_content,
@@ -305,6 +298,17 @@ if not os.path.exists(NOTES_FILE) or os.path.getsize(NOTES_FILE) == 0:
     push_to_github(NOTES_FILE)
 else:
     notes_df = pd.read_csv(NOTES_FILE)
+    notes_df = verify_and_align_columns(notes_df, NOTES_FILE, ["note_id", "title", "details", "event_date"])
+    # Repair any corrupted note_id values so next_id() always has clean data
+    notes_df["note_id"] = pd.to_numeric(notes_df["note_id"], errors='coerce')
+    if notes_df["note_id"].isna().any():
+        notes_df["note_id"] = notes_df["note_id"].fillna(
+            pd.Series(range(1, notes_df["note_id"].isna().sum() + 1),
+                      index=notes_df[notes_df["note_id"].isna()].index)
+        )
+        notes_df["note_id"] = notes_df["note_id"].astype(int)
+        notes_df.to_csv(NOTES_FILE, index=False)
+        push_to_github(NOTES_FILE)
 
 if not os.path.exists(PRIORITIES_FILE) or os.path.getsize(PRIORITIES_FILE) == 0:
     prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
@@ -462,11 +466,9 @@ with main_layout_frame:
             seven_days_ago = today - timedelta(days=7)
             recent_week_df = archive_df[archive_df['parsed_date'] >= seven_days_ago]
             week_completions_count = len(recent_week_df)
-            
             m_col1, m_col2 = st.columns(2)
             with m_col1: st.metric(label="Total Archived Tasks Closed", value=total_tasks_completed)
             with m_col2: st.metric(label="Tasks Closed (Past 7 Days)", value=week_completions_count)
-                
             st.markdown("**Daily Production Velocity Profile:**")
             chart_data = archive_df.groupby('log_date').size().reset_index(name='Tasks Completed')
             chart_data = chart_data.sort_values(by='log_date').tail(10)
@@ -479,7 +481,7 @@ with main_layout_frame:
 
     # --- SECTION 2: COMMAND CENTER TABS ---
     st.header("🖥️ Command Center 🖥️")
-    
+
     tab_alerts, tab_add, tab_manage, tab_eod, tab_archive = st.tabs([
         "⚠️ Pending Tasks",
         "➕ New Task",
@@ -487,36 +489,35 @@ with main_layout_frame:
         "📑 EOD Report",
         "🕒 Task History"
     ])
-    
+
     # --- TAB 1: PENDING TASKS ---
     with tab_alerts:
         st.subheader("Pending Tasks")
-        
+
         active_pending_df = df.copy()
         if "task_priority" in active_pending_df.columns:
             active_pending_df["task_priority"] = pd.to_numeric(active_pending_df["task_priority"]).fillna(3).astype(int)
             active_pending_df = active_pending_df.sort_values(by="task_priority", ascending=False)
-        
+
         reminders_found = False
         for index, row in active_pending_df.iterrows():
             base_due = get_base_due_date(row)
             is_overdue = today >= base_due
-            
+
             if is_overdue:
                 reminders_found = True
-                
+
                 days_overdue = (today - base_due).days
-                overdue_label = ""
                 if days_overdue == 0:
                     overdue_label = "<span class='overdue-badge'>⚠️ Due Today</span>"
                 elif days_overdue == 1:
                     overdue_label = "<span class='overdue-badge'>⚠️ 1 day overdue</span>"
                 else:
                     overdue_label = f"<span class='overdue-badge'>⚠️ {days_overdue} days overdue</span>"
-                
+
                 star_weight = int(row.get('task_priority', 3))
                 star_render_string = "⭐" * star_weight
-                
+
                 type_label = "📌 One-Time" if str(row.get('is_recurring', 'Yes')) == "No" else "🔄 Recurring"
                 st.markdown(
                     f"### **{row.get('task_name', 'Unnamed Task')}** "
@@ -528,16 +529,15 @@ with main_layout_frame:
                     f"Cycle: {row.get('frequency', 'Daily')} — *{type_label}* — "
                     f"Original due: **{base_due.strftime(DATE_FORMAT)}**"
                 )
-                
+
                 desc_content = str(row.get('task_description', 'No instructions.'))
                 lines = desc_content.split("\n")
                 has_excel_formulas = any(line.strip().startswith("=") for line in lines)
-                
+
                 if has_excel_formulas:
                     yes_formulas = []
                     no_formulas = []
                     plain_instructions = []
-                    
                     current_bucket = None
                     for line in lines:
                         cleaned_line = line.strip()
@@ -550,13 +550,13 @@ with main_layout_frame:
                             else: plain_instructions.append(cleaned_line)
                         else:
                             if cleaned_line.lower() not in ["formula to use:", "formula to use"]: plain_instructions.append(cleaned_line)
-                    
+
                     for inst in plain_instructions:
                         st.markdown(f"**{inst}**")
-                    
+
                     st.markdown("#### **📋 Formula to Use:**")
                     grid_col_left, grid_col_right = st.columns(2, gap="medium")
-                    
+
                     with grid_col_left:
                         st.markdown("<span style='color:#38BDF8; font-weight:bold;'>🟢 In Stock:</span>", unsafe_allow_html=True)
                         if yes_formulas:
@@ -565,7 +565,7 @@ with main_layout_frame:
                                 st.code(f_item, language=None)
                                 st.markdown("</div>", unsafe_allow_html=True)
                         else: st.caption("None configured.")
-                            
+
                     with grid_col_right:
                         st.markdown("<span style='color:#94A3B8; font-weight:bold;'>🔴 Out of Stock:</span>", unsafe_allow_html=True)
                         if no_formulas:
@@ -576,7 +576,7 @@ with main_layout_frame:
                         else: st.caption("None configured.")
                 else:
                     st.write(desc_content)
-                    
+
                 saved_links_str = str(row.get('task_url', '')).strip()
                 if saved_links_str and saved_links_str != "nan":
                     link_cols = st.columns(min(max(len(saved_links_str.split(",")), 1), 4))
@@ -584,12 +584,12 @@ with main_layout_frame:
                         if url_item.strip():
                             with link_cols[idx % 4]:
                                 st.link_button(f"🔗 Open Reference Link", url=url_item.strip(), use_container_width=True)
-                
+
                 saved_img_b64 = str(row.get('task_screenshot_b64', '')).strip()
                 if saved_img_b64 and saved_img_b64 != "nan":
                     try: st.image(base64.b64decode(saved_img_b64), caption="Reference Screenshot", width=350)
                     except Exception: pass
-                
+
                 st.markdown("<div class='pending-row-form'>", unsafe_allow_html=True)
                 with st.form(key=f"form_pending_{row.get('task_id')}"):
                     result_notes = st.text_area(
@@ -598,24 +598,21 @@ with main_layout_frame:
                         key=f"res_{row.get('task_id')}",
                         height=68
                     )
-                    
                     uploaded_doc_file = st.file_uploader(
                         "📎 Attach Deliverable Document (Optional - Excel, Word, PDF, or Sheet Exports):",
                         type=["xlsx", "xls", "docx", "doc", "pdf", "csv"],
                         key=f"doc_attach_{row.get('task_id')}"
                     )
-                    
                     submit_trigger = st.form_submit_button("Done")
                     if submit_trigger:
                         clean_notes = result_notes.strip() if result_notes.strip() else "Completed successfully."
-                        
                         encoded_doc_b64 = ""
                         doc_name_label = ""
                         if uploaded_doc_file is not None:
                             encoded_doc_b64 = base64.b64encode(uploaded_doc_file.read()).decode('utf-8')
                             doc_name_label = uploaded_doc_file.name
-                            
-                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+
+                        new_log_id = next_id(eod_df['log_id'])
                         new_log_row = {
                             "log_id": new_log_id,
                             "task_title": str(row.get('task_name', 'Manual Log')).strip(),
@@ -629,7 +626,7 @@ with main_layout_frame:
                         }
                         eod_df = pd.concat([eod_df, pd.DataFrame([new_log_row])], ignore_index=True)
                         save_and_push(eod_df, EOD_FILE)
-                        
+
                         orig_idx = df[df['task_id'] == row.get('task_id')].index
                         if not orig_idx.empty:
                             if str(row.get('is_recurring', 'Yes')) == "No":
@@ -662,10 +659,7 @@ with main_layout_frame:
                 else:
                     note_badge = f"<span class='overdue-badge'>⚠️ {note_days_overdue} days overdue</span>"
 
-                st.markdown(
-                    f"### **{note_row['title']}** {note_badge}",
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"### **{note_row['title']}** {note_badge}", unsafe_allow_html=True)
                 st.caption(f"Originally scheduled: **{note_due.strftime(DATE_FORMAT)}**")
                 if str(note_row.get('details', '')).strip():
                     st.write(note_row['details'])
@@ -679,7 +673,7 @@ with main_layout_frame:
                     prompt_col1, prompt_col2, prompt_col3 = st.columns([1.5, 1.5, 3])
                     with prompt_col1:
                         if st.button("🗂️ Archive It", key=f"note_archive_{note_row['note_id']}", use_container_width=True):
-                            new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                            new_log_id = next_id(eod_df['log_id'])
                             archive_entry = {
                                 "log_id": new_log_id,
                                 "task_title": note_row['title'],
@@ -721,20 +715,16 @@ with main_layout_frame:
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
                 bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="[example1.com](https://example1.com\nhttps://example2.com)")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
-                
                 col_f1, col_f2, col_f3 = st.columns(3)
                 with col_f1: new_freq = st.selectbox("Interval Cycle", ["Daily", "Weekly", "Monthly"])
                 with col_f2: recurrence_setting = st.selectbox("Is this task recurring?", ["Yes", "No"])
                 with col_f3: selected_star_lbl = st.selectbox("Assign Priority Star Level:", STAR_OPTIONS, index=2)
-                
                 start_date = st.date_input("Routine Start Date", value=today)
                 if st.form_submit_button("Save Routine") and new_name:
                     comma_links = ",".join([l.strip() for l in bulk_urls_input.split("\n") if l.strip()]) if bulk_urls_input.strip() else ""
                     media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8') if uploaded_task_media is not None else ""
-                    new_id = int(df['task_id'].max() + 1) if not df.empty else 1
-                    
+                    new_id = next_id(df['task_id'])
                     numeric_prio_weight = STAR_OPTIONS.index(selected_star_lbl) + 1
-                    
                     new_task_row = {
                         "task_id": new_id,
                         "task_name": new_name,
@@ -750,15 +740,15 @@ with main_layout_frame:
                     df = pd.concat([df, pd.DataFrame([new_task_row])], ignore_index=True)
                     save_and_push(df, DB_FILE)
                     st.rerun()
-                    
+
         with sub_tab_note:
             with st.form("new_note_form", clear_on_submit=True):
                 note_title = st.text_input("Meeting / Event Title")
                 note_details = st.text_area("Agenda Notes")
                 note_date = st.date_input("Event Date", value=today)
                 if st.form_submit_button("Pin to Calendar") and note_title:
-                    new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    # FIX: was "new_note_id" (typo), now correctly "note_id"
+                    new_note_id = next_id(notes_df['note_id'])
+                    # FIX: key is "note_id" (was "new_note_id" — typo that corrupted the CSV)
                     notes_df = pd.concat([notes_df, pd.DataFrame([{
                         "note_id": new_note_id,
                         "title": note_title,
@@ -777,7 +767,7 @@ with main_layout_frame:
             if "task_priority" in maintenance_df.columns:
                 maintenance_df["task_priority"] = pd.to_numeric(maintenance_df["task_priority"]).fillna(3).astype(int)
                 maintenance_df = maintenance_df.sort_values(by="task_priority", ascending=False)
-                
+
             for index, row in maintenance_df.iterrows():
                 task_id = row.get('task_id')
                 current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
@@ -803,7 +793,7 @@ with main_layout_frame:
                         dup_start = st.date_input("Start Date", value=today, key=f"dsd_{task_id}", label_visibility="collapsed")
                     with dc3:
                         if st.button("✅", key=f"dsave_{task_id}", help="Save as new task"):
-                            new_dup_id = int(df['task_id'].max() + 1) if not df.empty else 1
+                            new_dup_id = next_id(df['task_id'])
                             dup_row = {
                                 "task_id": new_dup_id,
                                 "task_name": dup_name.strip() if dup_name.strip() else f"{row.get('task_name', 'Task')} (Copy)",
@@ -877,7 +867,7 @@ with main_layout_frame:
                             save_and_push(df, DB_FILE)
                             st.rerun()
                 st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
-                
+
         with m_note:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
             else:
@@ -890,8 +880,12 @@ with main_layout_frame:
                         with nc2: en_date = st.date_input("Date", value=parse_date_safely(row['event_date']), key=f"endate_{row['note_id']}", label_visibility="collapsed")
                         with nc3:
                             if st.button("✅", key=f"s_note_{row['note_id']}"):
-                                notes_df.at[index, 'title'] = en_title; notes_df.at[index, 'details'] = en_details; notes_df.at[index, 'event_date'] = en_date.strftime(STORAGE_DATE_FORMAT)
-                                save_and_push(notes_df, NOTES_FILE); st.session_state.editing_note_id = None; st.rerun()
+                                notes_df.at[index, 'title'] = en_title
+                                notes_df.at[index, 'details'] = en_details
+                                notes_df.at[index, 'event_date'] = en_date.strftime(STORAGE_DATE_FORMAT)
+                                save_and_push(notes_df, NOTES_FILE)
+                                st.session_state.editing_note_id = None
+                                st.rerun()
                     else:
                         with nc1:
                             st.write(f"📌 **{parse_date_safely(row['event_date']).strftime(DATE_FORMAT)}** — {row['title']}")
@@ -911,7 +905,7 @@ with main_layout_frame:
                             mnc1, mnc2, mnc3 = st.columns([1.5, 1.5, 3])
                             with mnc1:
                                 if st.button("🗂️ Archive It", key=f"mnote_archive_{row['note_id']}", use_container_width=True):
-                                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                                    new_log_id = next_id(eod_df['log_id'])
                                     archive_entry = {
                                         "log_id": new_log_id,
                                         "task_title": row['title'],
@@ -974,14 +968,13 @@ with main_layout_frame:
                     pass
 
         st.markdown("**📋 Quick Copy**")
-        
         st.markdown("<div class='clean-copy'>", unsafe_allow_html=True)
         st.code("Bryan Reyes", language=None)
         st.code("work.bryanc@gmail.com", language=None)
         st.code("Marketing & Reporting VA", language=None)
         st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("---")
-        
+
         eod_log_col, prio_log_col = st.columns(2)
         with eod_log_col:
             st.markdown("**Add Completed Tasks Manually:**")
@@ -989,7 +982,7 @@ with main_layout_frame:
                 manual_title = st.text_input("Project / Task Title:", value="Manual Log")
                 log_input = st.text_input("Action Detail / Note:")
                 if st.form_submit_button("Add") and log_input:
-                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                    new_log_id = next_id(eod_df['log_id'])
                     eod_df = pd.concat([eod_df, pd.DataFrame([{
                         "log_id": new_log_id,
                         "task_title": manual_title.strip() if manual_title.strip() else "Manual Log",
@@ -1005,7 +998,7 @@ with main_layout_frame:
             with st.form("prio_add_form", clear_on_submit=True):
                 prio_input = st.text_input("Item for tomorrow:", key="prio_in")
                 if st.form_submit_button("Add") and prio_input:
-                    new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
+                    new_prio_id = next_id(prio_df['prio_id'])
                     prio_df = pd.concat([prio_df, pd.DataFrame([{"prio_id": new_prio_id, "item_text": prio_input.strip()}])], ignore_index=True)
                     save_and_push(prio_df, PRIORITIES_FILE)
                     st.rerun()
@@ -1026,13 +1019,14 @@ with main_layout_frame:
                     grouped_lines.append(f"• {title}:")
                     for note in entries: grouped_lines.append(f"  - {note}")
             compiled_report = f"{emp_header}" + "\n".join(grouped_lines)
-        else: compiled_report = f"{emp_header}• (No work logged yet today.)"
-            
+        else:
+            compiled_report = f"{emp_header}• (No work logged yet today.)"
+
         st.markdown("**EOD Summary Block:**")
         st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
         st.code(compiled_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
-        
+
         has_images_today = False
         for _, row in eod_df.iterrows():
             if str(row.get('screenshot_b64', '')).strip():
@@ -1049,17 +1043,17 @@ with main_layout_frame:
                 auto_priorities.append(f"• {row.get('task_name', 'Task')}")
             elif base_due == tomorrow:
                 auto_priorities.append(f"• {row.get('task_name', 'Task')}")
-                
+
         for _, row in prio_df.iterrows():
             auto_priorities.append(f"• {row['item_text']}")
-            
+
         compiled_prio_report = f"Next Day Priorities / Agenda ({tomorrow.strftime(DATE_FORMAT)}):\n----------------------------------------\n" + ("\n".join(auto_priorities) if auto_priorities else "• No priorities scheduled for tomorrow.")
-        
+
         st.markdown("**Next Day Priorities:**")
         st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
         st.code(compiled_prio_report, language=None)
         st.markdown("</div>", unsafe_allow_html=True)
-        
+
         st.markdown(" ")
         col_space, col_clear_w, col_clear_p = st.columns([2, 1, 1])
         with col_clear_w:
@@ -1078,13 +1072,13 @@ with main_layout_frame:
     # --- TAB 5: TASK HISTORY ---
     with tab_archive:
         st.subheader("🕒 Completed Task History")
-        
+
         search_col, filter_col, download_col = st.columns([2.0, 1.5, 1.5], vertical_alignment="bottom")
         with search_col:
             history_search_query = st.text_input("🔍 Search logs by keyword or formula:", value="", placeholder="Type task title, notes, or formulas...", key="hist_search_f")
         with filter_col:
             range_selection = st.selectbox("Choose Date Filter Window:", ["All Logs", "This Week", "This Month", "Custom Date Range"], key="hist_date_f")
-            
+
         if archive_df.empty:
             st.info("Your master archive file is currently empty.")
         else:
@@ -1100,22 +1094,22 @@ with main_layout_frame:
                 col_date1, col_date2 = st.columns(2)
                 with col_date1: filter_start = st.date_input("Start Date Target:", value=today - timedelta(days=7))
                 with col_date2: filter_end = st.date_input("End Date Target:", value=today)
-            
+
             filtered_archive = archive_df.copy() if range_selection == "All Logs" else archive_df[(archive_df['parsed_date'] >= filter_start) & (archive_df['parsed_date'] <= filter_end)]
-            
+
             if history_search_query.strip():
                 query = history_search_query.lower().strip()
                 filtered_archive = filtered_archive[
                     filtered_archive['task_title'].str.lower().str.contains(query) |
                     filtered_archive['bullet_text'].str.lower().str.contains(query)
                 ]
-            
+
             if filtered_archive.empty:
                 st.warning("No archived rows match selected window filters or query term.")
             else:
                 st.markdown(f"**Showing Records for Frame: {range_selection}** ({len(filtered_archive)} matches found)")
                 filtered_archive = filtered_archive.sort_values(by="parsed_date", ascending=False)
-                
+
                 seen_history_blocks = {}
                 for _, row in filtered_archive.iterrows():
                     f_date_str = row['parsed_date'].strftime(DATE_FORMAT)
@@ -1123,7 +1117,7 @@ with main_layout_frame:
                     if date_key not in seen_history_blocks: seen_history_blocks[date_key] = {}
                     if title not in seen_history_blocks[date_key]: seen_history_blocks[date_key][title] = []
                     seen_history_blocks[date_key][title].append((row['bullet_text'], str(row.get('task_links', ''))))
-                
+
                 output_lines = []
                 for date_lbl, titles_dict in seen_history_blocks.items():
                     output_lines.append(date_lbl); output_lines.append("-" * 40)
@@ -1137,9 +1131,9 @@ with main_layout_frame:
                                 if extra_links_str and extra_links_str != "nan" and extra_links_str.strip():
                                     for lk in extra_links_str.split(","): output_lines.append(f"    🔗 {lk}")
                     output_lines.append("\n")
-                
+
                 compiled_text_history = "\n".join(output_lines)
-                
+
                 with download_col:
                     st.download_button(
                         label="📥 Download Filtered History (.txt)",
@@ -1148,11 +1142,11 @@ with main_layout_frame:
                         mime="text/plain",
                         use_container_width=True
                     )
-                
+
                 st.markdown("<div class='clean-report-block'>", unsafe_allow_html=True)
                 st.code(compiled_text_history, language=None)
                 st.markdown("</div>", unsafe_allow_html=True)
-                
+
                 st.markdown("### ✅ Recover Logged File Deliverables")
                 file_found = False
                 for _, row in filtered_archive.iterrows():
@@ -1161,7 +1155,6 @@ with main_layout_frame:
                         file_found = True
                         file_name_label = str(row.get('doc_attachment_name', 'downloaded_file.xlsx'))
                         file_date_stamp = parse_date_safely(row['log_date']).strftime(DATE_FORMAT)
-                        
                         try:
                             decoded_binary_payload = base64.b64decode(raw_b64_data)
                             st.download_button(
