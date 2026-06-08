@@ -212,7 +212,7 @@ def push_to_github(filename):
         repo = cfg["repo"]
         branch = cfg["branch"]
         
-        url = f"https://api.github.com/repos/{repo}/contents/{filename}"
+        url = f"[api.github.com](https://api.github.com/repos/{repo}/contents/{filename})"
         headers = {"Authorization": f"token {token}", "Accept": "application/vnd.github.v3+json"}
         
         res = requests.get(url, headers=headers, params={"ref": branch})
@@ -247,7 +247,6 @@ def get_starter_tasks():
         ],
         "task_screenshot_b64": ["", "", ""],
         "task_priority": [3, 2, 1],
-        # NEW: base_due_date stores the original due date so the cycle stays anchored
         "base_due_date": ["", "", ""]
     }
 
@@ -334,37 +333,22 @@ def parse_date_safely(date_str):
 
 
 def get_base_due_date(row):
-    """
-    Returns the anchored base due date for a task.
-
-    - If base_due_date is already set (task was previously overdue and anchored),
-      return that stored value — it never changes until the task is marked Done.
-    - Otherwise, calculate it fresh from last_completed + interval.
-
-    This ensures that even if days pass without completing the task,
-    the next cycle always counts from the ORIGINAL due date, not today.
-    """
     stored = str(row.get("base_due_date", "")).strip()
     if stored and stored != "nan" and stored != "":
         try:
             return datetime.strptime(stored, STORAGE_DATE_FORMAT).date()
         except ValueError:
             pass
-    # Not yet set — calculate from last_completed
     last_comp = parse_date_safely(row.get("last_completed", datetime.now().strftime(STORAGE_DATE_FORMAT)))
     return last_comp + timedelta(days=get_days_interval(row.get("frequency", "Daily")))
 
 
 def anchor_base_due_date_if_needed(df, today):
-    """
-    For every task that is now overdue and does NOT yet have a base_due_date stored,
-    stamp it immediately. This preserves the original due date across page refreshes.
-    """
     changed = False
     for idx, row in df.iterrows():
         stored = str(row.get("base_due_date", "")).strip()
         if stored and stored != "nan" and stored != "":
-            continue  # already anchored
+            continue
         last_comp = parse_date_safely(row.get("last_completed", today.strftime(STORAGE_DATE_FORMAT)))
         interval = get_days_interval(row.get("frequency", "Daily"))
         due_date = last_comp + timedelta(days=interval)
@@ -375,22 +359,11 @@ def anchor_base_due_date_if_needed(df, today):
 
 
 def auto_archive_if_inactive(eod_df, archive_df):
-    """
-    Auto-archives the EOD log if the most recent entry's timestamp
-    is older than AUTO_ARCHIVE_INACTIVITY_HOURS. This is shift-aware —
-    it doesn't care about midnight, only about how long since you last
-    touched the log. Safe for shifts ending at 2 AM or later.
-
-    Returns (eod_df, archive_df, was_archived, archived_date_label)
-    """
     if eod_df.empty:
         return eod_df, archive_df, False, None
 
-    # Read the most recent timestamp from the log
     ts_col = "log_timestamp"
     if ts_col not in eod_df.columns or eod_df[ts_col].fillna("").eq("").all():
-        # No timestamps yet (legacy rows) — fall back to log_date only,
-        # treat as start of that day so we don't accidentally wipe a fresh log
         return eod_df, archive_df, False, None
 
     try:
@@ -413,20 +386,6 @@ def auto_archive_if_inactive(eod_df, archive_df):
         return eod_df, archive_df, True, archived_date
 
     return eod_df, archive_df, False, None
-    try:
-        secret_cfg = st.secrets["email"]
-        msg = MIMEMultipart()
-        msg['From'] = secret_cfg["sender_email"]
-        msg['To'] = secret_cfg["receiver_email"]
-        msg['Subject'] = f"⏰ Routine Reminder: {task_name} is Overdue!"
-        link_line = f"🔗 Resource Link: {resource_url}\n" if resource_url and str(resource_url) != "nan" and str(resource_url).strip() != "" else ""
-        body = (f"Hello Bryan,\n\nThis is an automated alert from your Personal Tracker Dashboard.\nThe following routine requires an update:\n\n📌 Task: {task_name}\n📂 Instructions:\n{description}\n{link_line}\nAccess control panel: https://share.streamlit.io/")
-        msg.attach(MIMEText(body, 'plain'))
-        with smtplib.SMTP_SSL(secret_cfg["smtp_server"], secret_cfg["port"]) as server:
-            server.login(secret_cfg["sender_email"], secret_cfg["sender_password"])
-            server.sendmail(secret_cfg["sender_email"], secret_cfg["receiver_email"], msg.as_string())
-        return True
-    except Exception: return False
 
 
 today = datetime.now().date()
@@ -438,8 +397,6 @@ if anchoring_changed:
     save_and_push(df, DB_FILE)
 
 # --- AUTO-ARCHIVE ON INACTIVITY ---
-# Runs silently on every load. If EOD log hasn't been touched in 10+ hours,
-# it moves everything to the master archive automatically.
 eod_df, archive_df, was_auto_archived, auto_archive_date = auto_archive_if_inactive(eod_df, archive_df)
 if was_auto_archived:
     st.toast(f"✅ EOD log from {auto_archive_date} was auto-archived after 10 hours of inactivity.", icon="🗂️")
@@ -464,14 +421,10 @@ with main_layout_frame:
     st.header("📅 Monthly Overview")
     calendar_events = []
     for index, row in df.iterrows():
-        # For the calendar display we always use the anchored base_due_date
-        # to determine IF it's overdue, but show it on TODAY so it visually
-        # moves forward each day until the task is completed.
         base_due = get_base_due_date(row)
         is_overdue = today >= base_due
 
         if is_overdue:
-            # Move the marker to today so it rolls forward day by day
             calendar_display_date = today
             days_overdue = (today - base_due).days
             if days_overdue == 0:
@@ -483,7 +436,6 @@ with main_layout_frame:
             event_title = f"⚠️ {row.get('task_name', 'Task')} {overdue_suffix}"
             event_color = "#EF4444"
         else:
-            # Not yet overdue — pin to the actual future due date
             calendar_display_date = base_due
             event_title = f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}"
             event_color = "#1E3A8A"
@@ -553,7 +505,6 @@ with main_layout_frame:
             if is_overdue:
                 reminders_found = True
                 
-                # Calculate how many days overdue
                 days_overdue = (today - base_due).days
                 overdue_label = ""
                 if days_overdue == 0:
@@ -684,13 +635,8 @@ with main_layout_frame:
                             if str(row.get('is_recurring', 'Yes')) == "No":
                                 df = df.drop(orig_idx)
                             else:
-                                # ── KEY CHANGE ──────────────────────────────────────────
-                                # Set last_completed to base_due_date (the anchored original
-                                # due date), NOT today. This keeps the cycle on schedule.
-                                # e.g. weekly task due Jun 5, done Jun 8 → next due Jun 12.
                                 anchored_due = get_base_due_date(row)
                                 df.at[orig_idx[0], 'last_completed'] = anchored_due.strftime(STORAGE_DATE_FORMAT)
-                                # Clear base_due_date so it recalculates fresh next cycle
                                 df.at[orig_idx[0], 'base_due_date'] = ""
                             save_and_push(df, DB_FILE)
                         st.rerun()
@@ -724,7 +670,6 @@ with main_layout_frame:
                 if str(note_row.get('details', '')).strip():
                     st.write(note_row['details'])
 
-                # Completion prompt — shown when this note's Done was clicked
                 if st.session_state.completing_note_id == note_row['note_id']:
                     st.markdown(
                         "<span style='color:#38BDF8; font-weight:bold; font-size:0.9em;'>"
@@ -774,7 +719,7 @@ with main_layout_frame:
             with st.form("new_task_form", clear_on_submit=True):
                 new_name = st.text_input("Task Title")
                 new_desc = st.text_area("Instructions & Specific Formulas (Place each formula on its own line starting with '=')")
-                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="https://example1.com\nhttps://example2.com")
+                bulk_urls_input = st.text_area("Task Resource URLs (Paste one URL per line):", placeholder="[example1.com](https://example1.com\nhttps://example2.com)")
                 uploaded_task_media = st.file_uploader("Attach Base Reference Screenshot (Optional):", type=["png", "jpg", "jpeg"])
                 
                 col_f1, col_f2, col_f3 = st.columns(3)
@@ -813,7 +758,13 @@ with main_layout_frame:
                 note_date = st.date_input("Event Date", value=today)
                 if st.form_submit_button("Pin to Calendar") and note_title:
                     new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
-                    notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
+                    # FIX: was "new_note_id" (typo), now correctly "note_id"
+                    notes_df = pd.concat([notes_df, pd.DataFrame([{
+                        "note_id": new_note_id,
+                        "title": note_title,
+                        "details": note_details if note_details else "",
+                        "event_date": note_date.strftime(STORAGE_DATE_FORMAT)
+                    }])], ignore_index=True)
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
 
@@ -832,7 +783,6 @@ with main_layout_frame:
                 current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
                 orig_master_idx = df[df['task_id'] == task_id].index[0]
 
-                # ── DUPLICATE EDIT MODE ─────────────────────────────────────
                 if st.session_state.duplicating_task_id == task_id:
                     st.markdown(
                         "<span style='color:#38BDF8; font-size:0.85em; font-weight:bold;'>"
@@ -874,7 +824,6 @@ with main_layout_frame:
                             st.session_state.duplicating_task_id = None
                             st.rerun()
 
-                # ── NORMAL EDIT MODE ────────────────────────────────────────
                 elif st.session_state.editing_task_id == task_id:
                     ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
                     with ec1:
@@ -902,7 +851,6 @@ with main_layout_frame:
                             st.session_state.editing_task_id = None
                             st.rerun()
 
-                # ── VIEW MODE ───────────────────────────────────────────────
                 else:
                     ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
                     with ec1:
@@ -954,7 +902,6 @@ with main_layout_frame:
                         with nc3:
                             if st.button("♻️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
 
-                        # Completion prompt inline under the note row
                         if st.session_state.completing_note_id == row['note_id']:
                             st.markdown(
                                 "<span style='color:#38BDF8; font-weight:bold; font-size:0.9em;'>"
@@ -995,6 +942,7 @@ with main_layout_frame:
                                 st.session_state.completing_note_id = row['note_id']
                                 st.rerun()
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+
         with m_danger:
             st.markdown("<span style='color:#EF4444; font-weight:bold;'>🚨 CRITICAL ZONE: Factory Reset</span>", unsafe_allow_html=True)
             if st.text_input("Type RESET ALL to unlock confirmation:", placeholder="RESET ALL") == "RESET ALL":
@@ -1009,7 +957,6 @@ with main_layout_frame:
     with tab_eod:
         st.subheader("Daily Task Report")
 
-        # --- INACTIVITY TIMER STATUS ---
         if not eod_df.empty and "log_timestamp" in eod_df.columns:
             ts_vals = eod_df["log_timestamp"].replace("", pd.NA).dropna()
             if not ts_vals.empty:
