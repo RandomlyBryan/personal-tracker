@@ -418,15 +418,33 @@ with main_layout_frame:
     st.header("📅 Monthly Overview")
     calendar_events = []
     for index, row in df.iterrows():
+        # For the calendar display we always use the anchored base_due_date
+        # to determine IF it's overdue, but show it on TODAY so it visually
+        # moves forward each day until the task is completed.
         base_due = get_base_due_date(row)
         is_overdue = today >= base_due
-        
-        calendar_display_date = today if is_overdue else base_due
-        event_color = "#EF4444" if is_overdue else "#1E3A8A"
+
+        if is_overdue:
+            # Move the marker to today so it rolls forward day by day
+            calendar_display_date = today
+            days_overdue = (today - base_due).days
+            if days_overdue == 0:
+                overdue_suffix = "(Due Today)"
+            elif days_overdue == 1:
+                overdue_suffix = "(1 day overdue)"
+            else:
+                overdue_suffix = f"({days_overdue} days overdue)"
+            event_title = f"⚠️ {row.get('task_name', 'Task')} {overdue_suffix}"
+            event_color = "#EF4444"
+        else:
+            # Not yet overdue — pin to the actual future due date
+            calendar_display_date = base_due
+            event_title = f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}"
+            event_color = "#1E3A8A"
+
         formatted_cal_date = calendar_display_date.strftime(STORAGE_DATE_FORMAT)
-        
         calendar_events.append({
-            "title": f"⚠️ Due: {row.get('task_name', 'Task')}" if is_overdue else f"{'📌' if str(row.get('is_recurring', 'Yes')) == 'No' else '🔄'} {row.get('task_name', 'Task')}",
+            "title": event_title,
             "start": formatted_cal_date,
             "end": formatted_cal_date,
             "backgroundColor": event_color,
