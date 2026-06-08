@@ -202,6 +202,7 @@ if "editing_task_id" not in st.session_state: st.session_state.editing_task_id =
 if "editing_note_id" not in st.session_state: st.session_state.editing_note_id = None
 if "emails_sent_today" not in st.session_state: st.session_state.emails_sent_today = []
 if "duplicating_task_id" not in st.session_state: st.session_state.duplicating_task_id = None
+if "completing_note_id" not in st.session_state: st.session_state.completing_note_id = None
 
 
 def push_to_github(filename):
@@ -697,6 +698,75 @@ with main_layout_frame:
                 st.markdown("<hr style='margin:1.5em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         if not reminders_found: st.success("🎉 Everything is running on schedule!")
 
+        # --- ONE-TIME NOTES DUE TODAY OR OVERDUE ---
+        overdue_notes = notes_df[
+            notes_df['event_date'].apply(lambda d: parse_date_safely(d)) <= today
+        ] if not notes_df.empty else pd.DataFrame()
+
+        if not overdue_notes.empty:
+            st.markdown("<hr style='margin:1.5em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+            st.markdown("### 📌 Pending One-Time Notes")
+            for _, note_row in overdue_notes.iterrows():
+                note_due = parse_date_safely(note_row['event_date'])
+                note_days_overdue = (today - note_due).days
+                if note_days_overdue == 0:
+                    note_badge = "<span class='overdue-badge'>⚠️ Due Today</span>"
+                elif note_days_overdue == 1:
+                    note_badge = "<span class='overdue-badge'>⚠️ 1 day overdue</span>"
+                else:
+                    note_badge = f"<span class='overdue-badge'>⚠️ {note_days_overdue} days overdue</span>"
+
+                st.markdown(
+                    f"### **{note_row['title']}** {note_badge}",
+                    unsafe_allow_html=True
+                )
+                st.caption(f"Originally scheduled: **{note_due.strftime(DATE_FORMAT)}**")
+                if str(note_row.get('details', '')).strip():
+                    st.write(note_row['details'])
+
+                # Completion prompt — shown when this note's Done was clicked
+                if st.session_state.completing_note_id == note_row['note_id']:
+                    st.markdown(
+                        "<span style='color:#38BDF8; font-weight:bold; font-size:0.9em;'>"
+                        "What should happen to this note?</span>",
+                        unsafe_allow_html=True
+                    )
+                    prompt_col1, prompt_col2, prompt_col3 = st.columns([1.5, 1.5, 3])
+                    with prompt_col1:
+                        if st.button("🗂️ Archive It", key=f"note_archive_{note_row['note_id']}", use_container_width=True):
+                            new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                            archive_entry = {
+                                "log_id": new_log_id,
+                                "task_title": note_row['title'],
+                                "bullet_text": str(note_row.get('details', 'One-time note completed.')).strip() or "One-time note completed.",
+                                "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                                "log_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                "task_links": "", "screenshot_b64": "",
+                                "doc_attachment_b64": "", "doc_attachment_name": ""
+                            }
+                            eod_df = pd.concat([eod_df, pd.DataFrame([archive_entry])], ignore_index=True)
+                            save_and_push(eod_df, EOD_FILE)
+                            notes_df = notes_df[notes_df['note_id'] != note_row['note_id']]
+                            save_and_push(notes_df, NOTES_FILE)
+                            st.session_state.completing_note_id = None
+                            st.rerun()
+                    with prompt_col2:
+                        if st.button("🗑️ Delete It", key=f"note_delete_{note_row['note_id']}", use_container_width=True):
+                            notes_df = notes_df[notes_df['note_id'] != note_row['note_id']]
+                            save_and_push(notes_df, NOTES_FILE)
+                            st.session_state.completing_note_id = None
+                            st.rerun()
+                    with prompt_col3:
+                        if st.button("✖️ Cancel", key=f"note_cancel_{note_row['note_id']}"):
+                            st.session_state.completing_note_id = None
+                            st.rerun()
+                else:
+                    if st.button("✅ Mark as Completed", key=f"note_done_{note_row['note_id']}"):
+                        st.session_state.completing_note_id = note_row['note_id']
+                        st.rerun()
+
+                st.markdown("<hr style='margin:1.5em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+
     # --- TAB 2: NEW TASK ---
     with tab_add:
         sub_tab_task, sub_tab_note = st.tabs(["🔄 Recurring Routine", "📌 One-Time Note"])
@@ -883,6 +953,47 @@ with main_layout_frame:
                             if st.button("✒️", key=f"em_note_{row['note_id']}"): st.session_state.editing_note_id = row['note_id']; st.rerun()
                         with nc3:
                             if st.button("♻️", key=f"del_note_{row['note_id']}"): notes_df = notes_df[notes_df['note_id'] != row['note_id']]; save_and_push(notes_df, NOTES_FILE); st.rerun()
+
+                        # Completion prompt inline under the note row
+                        if st.session_state.completing_note_id == row['note_id']:
+                            st.markdown(
+                                "<span style='color:#38BDF8; font-weight:bold; font-size:0.9em;'>"
+                                "What should happen to this note?</span>",
+                                unsafe_allow_html=True
+                            )
+                            mnc1, mnc2, mnc3 = st.columns([1.5, 1.5, 3])
+                            with mnc1:
+                                if st.button("🗂️ Archive It", key=f"mnote_archive_{row['note_id']}", use_container_width=True):
+                                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                                    archive_entry = {
+                                        "log_id": new_log_id,
+                                        "task_title": row['title'],
+                                        "bullet_text": str(row.get('details', 'One-time note completed.')).strip() or "One-time note completed.",
+                                        "log_date": today.strftime(STORAGE_DATE_FORMAT),
+                                        "log_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                                        "task_links": "", "screenshot_b64": "",
+                                        "doc_attachment_b64": "", "doc_attachment_name": ""
+                                    }
+                                    eod_df = pd.concat([eod_df, pd.DataFrame([archive_entry])], ignore_index=True)
+                                    save_and_push(eod_df, EOD_FILE)
+                                    notes_df = notes_df[notes_df['note_id'] != row['note_id']]
+                                    save_and_push(notes_df, NOTES_FILE)
+                                    st.session_state.completing_note_id = None
+                                    st.rerun()
+                            with mnc2:
+                                if st.button("🗑️ Delete It", key=f"mnote_delete_{row['note_id']}", use_container_width=True):
+                                    notes_df = notes_df[notes_df['note_id'] != row['note_id']]
+                                    save_and_push(notes_df, NOTES_FILE)
+                                    st.session_state.completing_note_id = None
+                                    st.rerun()
+                            with mnc3:
+                                if st.button("✖️ Cancel", key=f"mnote_cancel_{row['note_id']}"):
+                                    st.session_state.completing_note_id = None
+                                    st.rerun()
+                        else:
+                            if st.button("✅ Mark as Completed", key=f"mnote_done_{row['note_id']}"):
+                                st.session_state.completing_note_id = row['note_id']
+                                st.rerun()
                     st.markdown("<hr style='margin:0.05em 0px; border-color:#232936;'>", unsafe_allow_html=True)
         with m_danger:
             st.markdown("<span style='color:#EF4444; font-weight:bold;'>🚨 CRITICAL ZONE: Factory Reset</span>", unsafe_allow_html=True)
@@ -891,7 +1002,7 @@ with main_layout_frame:
                     df = pd.DataFrame(get_starter_tasks()); save_and_push(df, DB_FILE)
                     for target_csv in [NOTES_FILE, EOD_FILE, PRIORITIES_FILE, ARCHIVE_FILE]:
                         if os.path.exists(target_csv): os.remove(target_csv)
-                    st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today, st.session_state.duplicating_task_id = None, None, [], None
+                    st.session_state.editing_task_id, st.session_state.editing_note_id, st.session_state.emails_sent_today, st.session_state.duplicating_task_id, st.session_state.completing_note_id = None, None, [], None, None
                     st.rerun()
 
     # --- TAB 4: EOD REPORT LOG BUILDER ---
