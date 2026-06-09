@@ -205,6 +205,13 @@ if "duplicating_task_id" not in st.session_state: st.session_state.duplicating_t
 if "completing_note_id" not in st.session_state: st.session_state.completing_note_id = None
 
 
+# ── SAFE ID HELPER ───────────────────────────────────────────────────────────
+# Prevents int(NaN) crashes when a column contains corrupted/missing ID values.
+def next_id(series):
+    valid = pd.to_numeric(series, errors='coerce').dropna()
+    return int(valid.max() + 1) if not valid.empty else 1
+
+
 def push_to_github(filename):
     try:
         cfg = st.secrets["github"]
@@ -678,7 +685,7 @@ with main_layout_frame:
                             encoded_doc_b64 = base64.b64encode(uploaded_doc_file.read()).decode('utf-8')
                             doc_name_label = uploaded_doc_file.name
                             
-                        new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                        new_log_id = next_id(eod_df['log_id'])
                         new_log_row = {
                             "log_id": new_log_id,
                             "task_title": str(row.get('task_name', 'Manual Log')).strip(),
@@ -755,7 +762,7 @@ with main_layout_frame:
                     prompt_col1, prompt_col2, prompt_col3 = st.columns([1.5, 1.5, 3])
                     with prompt_col1:
                         if st.button("🗂️ Archive It", key=f"note_archive_{note_id_key}", use_container_width=True):
-                            new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                            new_log_id = next_id(eod_df['log_id'])
                             archive_entry = {
                                 "log_id": new_log_id,
                                 "task_title": note_row['title'],
@@ -807,7 +814,7 @@ with main_layout_frame:
                 if st.form_submit_button("Save Routine") and new_name:
                     comma_links = ",".join([l.strip() for l in bulk_urls_input.split("\n") if l.strip()]) if bulk_urls_input.strip() else ""
                     media_b64 = base64.b64encode(uploaded_task_media.read()).decode('utf-8') if uploaded_task_media is not None else ""
-                    new_id = int(df['task_id'].max() + 1) if not df.empty else 1
+                    new_id = next_id(df['task_id'])
                     
                     numeric_prio_weight = STAR_OPTIONS.index(selected_star_lbl) + 1
                     
@@ -833,7 +840,7 @@ with main_layout_frame:
                 note_details = st.text_area("Agenda Notes")
                 note_date = st.date_input("Event Date", value=today)
                 if st.form_submit_button("Pin to Calendar") and note_title:
-                    new_note_id = int(notes_df['note_id'].max() + 1) if not notes_df.empty else 1
+                    new_note_id = next_id(notes_df['note_id'])
                     notes_df = pd.concat([notes_df, pd.DataFrame([{"new_note_id": new_note_id, "title": note_title, "details": note_details if note_details else "", "event_date": note_date.strftime(STORAGE_DATE_FORMAT)}])], ignore_index=True)
                     save_and_push(notes_df, NOTES_FILE)
                     st.rerun()
@@ -1030,7 +1037,7 @@ with main_layout_frame:
                             mnc1, mnc2, mnc3 = st.columns([1.5, 1.5, 3])
                             with mnc1:
                                 if st.button("🗂️ Archive It", key=f"mnote_archive_{row['note_id']}", use_container_width=True):
-                                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                                    new_log_id = next_id(eod_df['log_id'])
                                     archive_entry = {
                                         "log_id": new_log_id,
                                         "task_title": row['title'],
@@ -1108,7 +1115,7 @@ with main_layout_frame:
                 manual_title = st.text_input("Project / Task Title:", value="Manual Log")
                 log_input = st.text_input("Action Detail / Note:")
                 if st.form_submit_button("Add") and log_input:
-                    new_log_id = int(eod_df['log_id'].max() + 1) if not eod_df.empty else 1
+                    new_log_id = next_id(eod_df['log_id'])
                     eod_df = pd.concat([eod_df, pd.DataFrame([{
                         "log_id": new_log_id,
                         "task_title": manual_title.strip() if manual_title.strip() else "Manual Log",
@@ -1124,7 +1131,7 @@ with main_layout_frame:
             with st.form("prio_add_form", clear_on_submit=True):
                 prio_input = st.text_input("Item for tomorrow:", key="prio_in")
                 if st.form_submit_button("Add") and prio_input:
-                    new_prio_id = int(prio_df['prio_id'].max() + 1) if not prio_df.empty else 1
+                    new_prio_id = next_id(prio_df['prio_id'])
                     prio_df = pd.concat([prio_df, pd.DataFrame([{"prio_id": new_prio_id, "item_text": prio_input.strip()}])], ignore_index=True)
                     save_and_push(prio_df, PRIORITIES_FILE)
                     st.rerun()
