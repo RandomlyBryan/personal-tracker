@@ -848,147 +848,149 @@ with main_layout_frame:
                 maintenance_df.get("task_priority", 3), errors='coerce'
             ).fillna(3).astype(int)
             maintenance_df["task_name_lower"] = maintenance_df["task_name"].str.lower().fillna("")
-            # Sort: highest priority first, then A→Z by name within same priority
             maintenance_df = maintenance_df.sort_values(
                 by=["task_priority", "task_name_lower"],
                 ascending=[False, True]
             ).drop(columns=["task_name_lower"])
 
-            last_rendered_priority = None
+            TIER_META = {
+                5: ("⭐⭐⭐⭐⭐", "CRITICAL"),
+                4: ("⭐⭐⭐⭐",   "HIGH"),
+                3: ("⭐⭐⭐",     "MEDIUM"),
+                2: ("⭐⭐",       "LOW"),
+                1: ("⭐",         "MINIMAL"),
+            }
 
-            for index, row in maintenance_df.iterrows():
-                task_id = row.get('task_id')
-                current_priority = int(row.get('task_priority', 3))
+            # Group tasks by priority tier then render each as a collapsible section
+            for tier_prio in [5, 4, 3, 2, 1]:
+                tier_tasks = maintenance_df[maintenance_df["task_priority"] == tier_prio]
+                if tier_tasks.empty:
+                    continue
 
-                # Print a tier divider when the priority group changes
-                if current_priority != last_rendered_priority:
-                    star_tier = "⭐" * current_priority
-                    tier_label = {5: "Critical", 4: "High", 3: "Medium", 2: "Low", 1: "Minimal"}.get(current_priority, "")
-                    st.markdown(
-                        f"<div style='margin:10px 0 4px 0; color:#94A3B8; font-size:0.78em; "
-                        f"font-weight:bold; letter-spacing:1px; border-bottom:1px solid #232936; "
-                        f"padding-bottom:3px;'>{star_tier} &nbsp;{tier_label.upper()}</div>",
-                        unsafe_allow_html=True
-                    )
-                    last_rendered_priority = current_priority
+                stars, label = TIER_META[tier_prio]
+                task_count = len(tier_tasks)
+                # Check if any task in this tier is active (editing/duplicating)
+                active_ids = {st.session_state.editing_task_id, st.session_state.duplicating_task_id}
+                tier_has_active = any(row.get('task_id') in active_ids for _, row in tier_tasks.iterrows())
 
-                current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
-                orig_master_idx = df[df['task_id'] == task_id].index[0]
+                with st.expander(
+                    f"{stars}  {label}  —  {task_count} task{'s' if task_count != 1 else ''}",
+                    expanded=True  # All tiers open by default; user can collapse
+                ):
+                    for index, row in tier_tasks.iterrows():
+                        task_id = row.get('task_id')
+                        current_task_date = parse_date_safely(row.get('last_completed', today.strftime(STORAGE_DATE_FORMAT)))
+                        orig_master_idx = df[df['task_id'] == task_id].index[0]
+                        freq_label = row.get('frequency', 'Daily')
+                        rec_label = "One-Time" if str(row.get('is_recurring', 'Yes')) == 'No' else "Recurring"
+                        has_link = str(row.get('task_url', '')).strip() not in ['', 'nan']
+                        next_due = get_base_due_date(row)
+                        is_overdue_task = today >= next_due
 
-                # Expander label — shows name + stars + cycle at a glance when collapsed
-                star_display_exp = "⭐" * current_priority
-                freq_label = row.get('frequency', 'Daily')
-                rec_label = "One-Time" if str(row.get('is_recurring', 'Yes')) == 'No' else "Recurring"
-                has_link = str(row.get('task_url', '')).strip() not in ['', 'nan']
-                link_hint = " 🔗" if has_link else ""
-                expander_label = f"{row.get('task_name', 'Task')}  {star_display_exp}  ·  {freq_label} {rec_label}{link_hint}"
-
-                # Auto-expand if this task is being edited or duplicated
-                is_active = (
-                    st.session_state.editing_task_id == task_id or
-                    st.session_state.duplicating_task_id == task_id
-                )
-
-                with st.expander(expander_label, expanded=is_active):
-                    # ── DUPLICATE EDIT MODE ─────────────────────────────────
-                    if st.session_state.duplicating_task_id == task_id:
-                        st.markdown(
-                            "<span style='color:#38BDF8; font-size:0.85em; font-weight:bold;'>"
-                            "📋 Duplicating task — tweak details below then save as new</span>",
-                            unsafe_allow_html=True
-                        )
-                        dc1, dc2, dc3 = st.columns([2.5, 1.5, 1.0])
-                        with dc1:
-                            dup_name = st.text_input("Name", value=f"{row.get('task_name', '')} (Copy)", key=f"dn_{task_id}", label_visibility="collapsed")
-                            dup_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"dd_{task_id}", label_visibility="collapsed")
-                            dup_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"durl_{task_id}")
-                        with dc2:
-                            dup_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"df_{task_id}", label_visibility="collapsed")
-                            dup_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"drec_{task_id}", label_visibility="collapsed")
-                            dup_prio_val = int(row.get('task_priority', 3))
-                            dup_prio_idx = (dup_prio_val - 1) if 1 <= dup_prio_val <= 5 else 2
-                            dup_star_lbl = st.selectbox("Priority", STAR_OPTIONS, index=dup_prio_idx, key=f"dprio_{task_id}")
-                            dup_start = st.date_input("Start Date", value=today, key=f"dsd_{task_id}", label_visibility="collapsed")
-                        with dc3:
-                            if st.button("✅", key=f"dsave_{task_id}", help="Save as new task"):
-                                new_dup_id = next_id(df['task_id'])
-                                dup_row = {
-                                    "task_id": new_dup_id,
-                                    "task_name": dup_name.strip() if dup_name.strip() else f"{row.get('task_name', 'Task')} (Copy)",
-                                    "task_description": dup_desc if dup_desc else "No instructions.",
-                                    "task_url": dup_url.strip(),
-                                    "frequency": dup_freq,
-                                    "is_recurring": dup_rec,
-                                    "last_completed": dup_start.strftime(STORAGE_DATE_FORMAT),
-                                    "task_screenshot_b64": str(row.get('task_screenshot_b64', '')),
-                                    "task_priority": STAR_OPTIONS.index(dup_star_lbl) + 1,
-                                    "base_due_date": ""
-                                }
-                                df = pd.concat([df, pd.DataFrame([dup_row])], ignore_index=True)
-                                save_and_push(df, DB_FILE)
-                                st.session_state.duplicating_task_id = None
-                                st.rerun()
-                            if st.button("✖️", key=f"dcancel_{task_id}", help="Cancel duplicate"):
-                                st.session_state.duplicating_task_id = None
-                                st.rerun()
-
-                    # ── NORMAL EDIT MODE ────────────────────────────────────
-                    elif st.session_state.editing_task_id == task_id:
-                        ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
-                        with ec1:
-                            edit_name = st.text_input("Name", value=row.get('task_name', ''), key=f"en_{task_id}", label_visibility="collapsed")
-                            edit_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"ed_{task_id}", label_visibility="collapsed")
-                            edit_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"eurl_{task_id}")
-                        with ec2:
-                            edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{task_id}", label_visibility="collapsed")
-                            edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{task_id}", label_visibility="collapsed")
-                            current_prio_val = int(row.get('task_priority', 3))
-                            fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
-                            edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{task_id}")
-                            edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{task_id}", label_visibility="collapsed")
-                        with ec3:
-                            if st.button("✅", key=f"s_{task_id}"):
-                                df.at[orig_master_idx, 'task_name'] = edit_name
-                                df.at[orig_master_idx, 'task_description'] = edit_desc
-                                df.at[orig_master_idx, 'task_url'] = edit_url.strip()
-                                df.at[orig_master_idx, 'frequency'] = edit_freq
-                                df.at[orig_master_idx, 'is_recurring'] = edit_rec
-                                df.at[orig_master_idx, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
-                                df.at[orig_master_idx, 'task_priority'] = STAR_OPTIONS.index(edit_star_lbl) + 1
-                                df.at[orig_master_idx, 'base_due_date'] = ""
-                                save_and_push(df, DB_FILE)
-                                st.session_state.editing_task_id = None
-                                st.rerun()
-
-                    # ── VIEW MODE ───────────────────────────────────────────
-                    else:
-                        ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
-                        with ec1:
-                            st.caption(f"Cycle: {freq_label} — *{rec_label}*")
-                            if has_link: st.caption("🔗 Link Data Saved")
-                            next_due = get_base_due_date(row)
-                            if today >= next_due:
-                                st.caption(f"📅 Next due: **{next_due.strftime(DATE_FORMAT)}** ⚠️ Overdue")
-                            else:
-                                st.caption(f"📅 Next due: **{next_due.strftime(DATE_FORMAT)}**")
-                        with ec2:
-                            btn_col1, btn_col2 = st.columns(2)
-                            with btn_col1:
-                                if st.button("✒️", key=f"em_{task_id}", help="Edit task"):
-                                    st.session_state.editing_task_id = task_id
+                        # ── DUPLICATE MODE ───────────────────────────────────
+                        if st.session_state.duplicating_task_id == task_id:
+                            st.markdown(
+                                "<span style='color:#38BDF8; font-size:0.85em; font-weight:bold;'>"
+                                "📋 Duplicating — tweak and save as new</span>",
+                                unsafe_allow_html=True
+                            )
+                            dc1, dc2, dc3 = st.columns([2.5, 1.5, 1.0])
+                            with dc1:
+                                dup_name = st.text_input("Name", value=f"{row.get('task_name', '')} (Copy)", key=f"dn_{task_id}", label_visibility="collapsed")
+                                dup_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"dd_{task_id}", label_visibility="collapsed")
+                                dup_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"durl_{task_id}")
+                            with dc2:
+                                dup_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"df_{task_id}", label_visibility="collapsed")
+                                dup_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"drec_{task_id}", label_visibility="collapsed")
+                                dup_prio_val = int(row.get('task_priority', 3))
+                                dup_prio_idx = (dup_prio_val - 1) if 1 <= dup_prio_val <= 5 else 2
+                                dup_star_lbl = st.selectbox("Priority", STAR_OPTIONS, index=dup_prio_idx, key=f"dprio_{task_id}")
+                                dup_start = st.date_input("Start Date", value=today, key=f"dsd_{task_id}", label_visibility="collapsed")
+                            with dc3:
+                                if st.button("✅", key=f"dsave_{task_id}", help="Save as new task"):
+                                    new_dup_id = next_id(df['task_id'])
+                                    dup_row = {
+                                        "task_id": new_dup_id,
+                                        "task_name": dup_name.strip() if dup_name.strip() else f"{row.get('task_name', 'Task')} (Copy)",
+                                        "task_description": dup_desc if dup_desc else "No instructions.",
+                                        "task_url": dup_url.strip(),
+                                        "frequency": dup_freq,
+                                        "is_recurring": dup_rec,
+                                        "last_completed": dup_start.strftime(STORAGE_DATE_FORMAT),
+                                        "task_screenshot_b64": str(row.get('task_screenshot_b64', '')),
+                                        "task_priority": STAR_OPTIONS.index(dup_star_lbl) + 1,
+                                        "base_due_date": ""
+                                    }
+                                    df = pd.concat([df, pd.DataFrame([dup_row])], ignore_index=True)
+                                    save_and_push(df, DB_FILE)
                                     st.session_state.duplicating_task_id = None
                                     st.rerun()
-                            with btn_col2:
-                                if st.button("📋", key=f"dup_{task_id}", help="Duplicate task"):
-                                    st.session_state.duplicating_task_id = task_id
+                                if st.button("✖️", key=f"dcancel_{task_id}", help="Cancel"):
+                                    st.session_state.duplicating_task_id = None
+                                    st.rerun()
+
+                        # ── EDIT MODE ────────────────────────────────────────
+                        elif st.session_state.editing_task_id == task_id:
+                            ec1, ec2, ec3 = st.columns([2.5, 1.5, 1.0])
+                            with ec1:
+                                edit_name = st.text_input("Name", value=row.get('task_name', ''), key=f"en_{task_id}", label_visibility="collapsed")
+                                edit_desc = st.text_area("Desc", value=row.get('task_description', ''), key=f"ed_{task_id}", label_visibility="collapsed")
+                                edit_url = st.text_input("URL Link", value=str(row.get('task_url', '')), key=f"eurl_{task_id}")
+                            with ec2:
+                                edit_freq = st.selectbox("Freq", ["Daily", "Weekly", "Monthly"], index=["Daily", "Weekly", "Monthly"].index(row.get('frequency', 'Daily')), key=f"ef_{task_id}", label_visibility="collapsed")
+                                edit_rec = st.selectbox("Recurring?", ["Yes", "No"], index=["Yes", "No"].index(str(row.get('is_recurring', 'Yes')) if str(row.get('is_recurring', 'Yes')) in ["Yes", "No"] else "Yes"), key=f"erec_{task_id}", label_visibility="collapsed")
+                                current_prio_val = int(row.get('task_priority', 3))
+                                fallback_prio_idx = (current_prio_val - 1) if 1 <= current_prio_val <= 5 else 2
+                                edit_star_lbl = st.selectbox("Edit Star Priority Level", STAR_OPTIONS, index=fallback_prio_idx, key=f"eprio_{task_id}")
+                                edit_t_date = st.date_input("Edit Start Date", value=current_task_date, key=f"etd_{task_id}", label_visibility="collapsed")
+                            with ec3:
+                                if st.button("✅", key=f"s_{task_id}"):
+                                    df.at[orig_master_idx, 'task_name'] = edit_name
+                                    df.at[orig_master_idx, 'task_description'] = edit_desc
+                                    df.at[orig_master_idx, 'task_url'] = edit_url.strip()
+                                    df.at[orig_master_idx, 'frequency'] = edit_freq
+                                    df.at[orig_master_idx, 'is_recurring'] = edit_rec
+                                    df.at[orig_master_idx, 'last_completed'] = edit_t_date.strftime(STORAGE_DATE_FORMAT)
+                                    df.at[orig_master_idx, 'task_priority'] = STAR_OPTIONS.index(edit_star_lbl) + 1
+                                    df.at[orig_master_idx, 'base_due_date'] = ""
+                                    save_and_push(df, DB_FILE)
                                     st.session_state.editing_task_id = None
                                     st.rerun()
-                        with ec3:
-                            if st.button("♻️", key=f"d_{task_id}", help="Delete task"):
-                                df = df.drop(orig_master_idx)
-                                save_and_push(df, DB_FILE)
-                                st.rerun()
-                
+
+                        # ── VIEW MODE ────────────────────────────────────────
+                        else:
+                            vc1, vc2, vc3 = st.columns([2.5, 1.5, 1.0])
+                            with vc1:
+                                overdue_hint = " ⚠️" if is_overdue_task else ""
+                                st.write(
+                                    f"**{row.get('task_name', 'Task')}**",
+                                    unsafe_allow_html=True
+                                )
+                                st.caption(
+                                    f"{freq_label} · {rec_label}"
+                                    + (f" · 🔗 Link saved" if has_link else "")
+                                    + f" · 📅 {next_due.strftime(DATE_FORMAT)}{overdue_hint}"
+                                )
+                            with vc2:
+                                btn_col1, btn_col2 = st.columns(2)
+                                with btn_col1:
+                                    if st.button("✒️", key=f"em_{task_id}", help="Edit task"):
+                                        st.session_state.editing_task_id = task_id
+                                        st.session_state.duplicating_task_id = None
+                                        st.rerun()
+                                with btn_col2:
+                                    if st.button("📋", key=f"dup_{task_id}", help="Duplicate task"):
+                                        st.session_state.duplicating_task_id = task_id
+                                        st.session_state.editing_task_id = None
+                                        st.rerun()
+                            with vc3:
+                                if st.button("♻️", key=f"d_{task_id}", help="Delete task"):
+                                    df = df.drop(orig_master_idx)
+                                    save_and_push(df, DB_FILE)
+                                    st.rerun()
+
+                        st.markdown("<hr style='margin:0.3em 0px; border-color:#232936;'>", unsafe_allow_html=True)
+
         with m_note:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
             else:
