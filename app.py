@@ -306,6 +306,20 @@ if not os.path.exists(NOTES_FILE) or os.path.getsize(NOTES_FILE) == 0:
     push_to_github(NOTES_FILE)
 else:
     notes_df = pd.read_csv(NOTES_FILE)
+    # Ensure required columns exist
+    for col in ["note_id", "title", "details", "event_date"]:
+        if col not in notes_df.columns:
+            notes_df[col] = ""
+    # Repair corrupted/missing note_id values (e.g. from old "new_note_id" typo bug)
+    notes_df["note_id"] = pd.to_numeric(notes_df["note_id"], errors='coerce')
+    if notes_df["note_id"].isna().any():
+        bad_mask = notes_df["note_id"].isna()
+        max_good = notes_df["note_id"].max()
+        start = int(max_good + 1) if not pd.isna(max_good) else 1
+        notes_df.loc[bad_mask, "note_id"] = range(start, start + bad_mask.sum())
+        notes_df["note_id"] = notes_df["note_id"].astype(int)
+        notes_df.to_csv(NOTES_FILE, index=False)
+        push_to_github(NOTES_FILE)
 
 if not os.path.exists(PRIORITIES_FILE) or os.path.getsize(PRIORITIES_FILE) == 0:
     prio_df = pd.DataFrame(columns=["prio_id", "item_text"])
@@ -707,8 +721,13 @@ with main_layout_frame:
             st.markdown("<hr style='margin:1.5em 0px; border-color:#232936;'>", unsafe_allow_html=True)
             st.markdown("### 📌 Pending One-Time Notes")
             for _, note_row in overdue_notes.iterrows():
-                # Cast note_id to int to avoid float comparison mismatch from CSV reads
-                note_id_key = int(note_row['note_id'])
+                # Guard against NaN note_id values from corrupted CSV rows
+                raw_note_id = note_row['note_id']
+                try:
+                    note_id_key = int(float(raw_note_id))
+                except (ValueError, TypeError):
+                    # Skip unrecoverable rows silently
+                    continue
                 note_due = parse_date_safely(note_row['event_date'])
                 note_days_overdue = (today - note_due).days
                 if note_days_overdue == 0:
@@ -957,6 +976,11 @@ with main_layout_frame:
             if notes_df.empty: st.info("No temporary calendar notes pinned.")
             else:
                 for index, row in notes_df.iterrows():
+                    # Safe cast — skip any row whose note_id is still unrecoverable
+                    try:
+                        _safe_nid = int(float(row['note_id']))
+                    except (ValueError, TypeError):
+                        continue
                     nc1, nc2, nc3 = st.columns([3, 1, 1])
                     if st.session_state.editing_note_id == row['note_id']:
                         with nc1:
