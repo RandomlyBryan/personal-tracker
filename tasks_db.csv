@@ -1,6 +1,6 @@
 task_id,task_name,task_description,task_url,frequency,is_recurring,last_completed,task_screenshot_b64,task_priority,base_due_date
 6,Algolia Metrics Update,No instructions.,,Weekly,Yes,2026-07-20,,3,2026-07-27
-7,Flow metrics update,No instructions.,,Weekly,Yes,2026-07-20,,3,2026-07-27
+7,Flow metrics update,No instructions.,,Weekly,Yes,2026-07-27,,3,
 9,TCM_Week (Out of Stock Ratio),"Formula to use:
 
 Yes
